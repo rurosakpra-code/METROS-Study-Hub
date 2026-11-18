@@ -32,6 +32,7 @@ This is the main MedStudy Hub website. It contains the student experience and th
 - Active website time in Results & Progress (stored per account on the current device).
 - Installable Progressive Web App (PWA) with a cached app shell.
 - Resume the last visited section for up to 30 minutes.
+- Automatically sign out of this browser after 24 hours; a fresh login is required.
 - Password-reset email flow and account deletion flow.
 
 ### Administrator area
@@ -165,6 +166,8 @@ Deploy the site over HTTPS (or run it on localhost), then use the browser's **In
 
 Website usage time is accumulated while the signed-in portal is open and visible, and is saved locally in the current browser profile. It is not a cross-device analytics total.
 
+The website shows a connection notice when the browser goes offline or a Supabase request cannot reach the network. The app shell can load offline, but signing in and accessing study data still require a network connection. The 24-hour sign-out is enforced by the website in each browser profile; configure Supabase Auth session limits as well if a 24-hour limit must also be enforced for sessions used outside this website.
+
 ## Part 7 — Set up VERIFIED Google Forms score import
 
 This is an additional integration, not an automatic consequence of adding a Google Form URL. It requires a Google Apps Script trigger and a deployed Supabase Edge Function.
@@ -290,6 +293,8 @@ You can use a static hosting provider such as Netlify, Vercel or Cloudflare Page
 - [ ] An admin can add/edit/delete an exam and students see the date/time and countdown.
 - [ ] Class and exam reminders appear in the notification centre.
 - [ ] Students can enable/disable class phone alerts and receive a test notification.
+- [ ] An offline connection notice appears on both the login screen and signed-in pages.
+- [ ] A signed-in session is ended after 24 hours and requires a fresh login.
 - [ ] Group chat works for multiple accounts and messages expire after seven days.
 - [ ] Admin feature switches change the corresponding student features.
 - [ ] The Home page shows the edited name, class/year and medal-ranked leaderboard.
