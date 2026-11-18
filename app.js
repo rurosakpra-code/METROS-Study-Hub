@@ -23,12 +23,112 @@ const FEATURE_OPTIONS = [
   ["schedule_reminders","In-app class and exam reminders"],
   ["phone_class_notifications","Phone notifications for class start/end"]
 ];
+const DEFAULT_USER_PREFERENCES={
+  language:"system",timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC",region:"global",
+  darkMode:false,density:"comfortable",textSize:"medium",reduceMotion:false,noAutoplay:true,
+  highContrast:false,colorVision:"none",announcementAlerts:true,scheduleAlerts:true,
+  quietHours:false,quietStart:"22:00",quietEnd:"07:00",dailyPopupLimit:6,activityConsent:true
+};
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const loadingMessage = text => `<p class="muted loading-inline" aria-live="polite"><span class="refresh-spinner" aria-hidden="true"></span>${esc(text)}</p>`;
-let currentUser=null,isAdmin=false,authMode="login",quizzes=[],resources=[],adminQuizzes=[],adminResources=[],attempts=[],notifications=[],calendarNotifications=[],classSessions=[],mbExams=[],groupChatMessages=[],featureSettings=Object.fromEntries(FEATURE_OPTIONS.map(([key])=>[key,true])),scheduleDataLoaded=false,scheduleLoadError=null,notificationReadIds=new Set(),notificationRefreshTimer=null,chatRefreshTimer=null,activeBoard="overall",chart=null,resourceRenderId=0,activeTimetableDay=0,liveNoticeTimer=null,usageTimer=null,usageLastTick=null,activityPendingSeconds=0,activityLoggingUnavailable=false,adminUserRows=[],adminUserPage=1,adminUsersHaveMore=false,toastTimer=null,sessionExpiryTimer=null,sessionExpiryInProgress=false,fallbackSessionStartedAt=null,fallbackSessionUserId=null;
+const loadingMessage = text => `<p class="muted loading-inline skeleton-loading" role="status" aria-live="polite"><span class="sr-only">${esc(text)}</span><span class="skeleton-line"></span><span class="skeleton-line skeleton-line-short"></span></p>`;
+let currentUser=null,isAdmin=false,activityResetSyncAvailable=false,authMode="login",quizzes=[],resources=[],adminQuizzes=[],adminResources=[],attempts=[],notifications=[],calendarNotifications=[],classSessions=[],mbExams=[],groupChatMessages=[],featureSettings=Object.fromEntries(FEATURE_OPTIONS.map(([key])=>[key,true])),userPreferences={...DEFAULT_USER_PREFERENCES},studyStreak={current:0,longest:0,lastActiveDate:null,syncStatus:""},streakCheckPending=false,queuedLiveNotices=[],scheduleDataLoaded=false,scheduleLoadError=null,notificationReadIds=new Set(),notificationRefreshTimer=null,chatRefreshTimer=null,activeBoard="overall",chart=null,resourceRenderId=0,activeTimetableDay=0,liveNoticeTimer=null,usageTimer=null,usageLastTick=null,activityPendingSeconds=0,activityLoggingUnavailable=false,adminUserRows=[],adminUserPage=1,adminUsersHaveMore=false,toastTimer=null,sessionExpiryTimer=null,sessionExpiryInProgress=false,fallbackSessionStartedAt=null,fallbackSessionUserId=null;
 const resourceLinkCache=new Map();
 const pendingPhoneAlerts=new Set();
+function userPreferencesKey(){return currentUser?"medstudy:preferences:"+currentUser.id:null}
+function studyStreakCacheKey(){return currentUser?"medstudy:study-streak:"+currentUser.id:null}
+function activityResetMarkerKey(){return currentUser?"medstudy:activity-reset-at:"+currentUser.id:null}
+function localDateKeyInZone(timeZone=userPreferences.timeZone){
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+  const values=Object.fromEntries(parts.filter(part=>part.type!=="literal").map(part=>[part.type,part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+function sanitizeUserPreferences(saved={}){
+  const merged={...DEFAULT_USER_PREFERENCES,...saved};
+  if(!["system","en-GB","en-US"].includes(merged.language))merged.language="system";
+  try{new Intl.DateTimeFormat("en",{timeZone:merged.timeZone})}
+  catch{merged.timeZone=DEFAULT_USER_PREFERENCES.timeZone}
+  if(!["global","east-africa","west-africa","southern-africa","middle-east","europe","americas","asia-pacific"].includes(merged.region))merged.region="global";
+  if(!["comfortable","compact"].includes(merged.density))merged.density="comfortable";
+  if(!["small","medium","large"].includes(merged.textSize))merged.textSize="medium";
+  if(!["none","blue-orange","monochrome"].includes(merged.colorVision))merged.colorVision="none";
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(merged.quietStart))merged.quietStart="22:00";
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(merged.quietEnd))merged.quietEnd="07:00";
+  merged.dailyPopupLimit=Math.max(1,Math.min(20,Number.parseInt(merged.dailyPopupLimit,10)||6));
+  ["darkMode","reduceMotion","noAutoplay","highContrast","announcementAlerts","scheduleAlerts","quietHours","activityConsent"].forEach(key=>merged[key]=merged[key]!==false&&merged[key]!==0);
+  return merged;
+}
+function loadUserPreferences(){
+  const key=userPreferencesKey();
+  let saved={};
+  try{saved=JSON.parse(localStorage.getItem(key)||"{}")}
+  catch(error){console.warn("Could not load personal settings.",error)}
+  return sanitizeUserPreferences(saved);
+}
+function selectedLocale(){
+  return userPreferences.language==="system"?(navigator.language||"en-GB"):userPreferences.language;
+}
+function formatDateTime(value,options={dateStyle:"medium",timeStyle:"short"}){
+  const {timeZone=userPreferences.timeZone,...formatOptions}=options;
+  return new Intl.DateTimeFormat(selectedLocale(),{...formatOptions,timeZone}).format(new Date(value));
+}
+function formatDate(value,options={dateStyle:"medium"}){
+  const {timeZone=userPreferences.timeZone,...formatOptions}=options;
+  return new Intl.DateTimeFormat(selectedLocale(),{...formatOptions,timeZone}).format(new Date(value));
+}
+function applyUserPreferences(){
+  const body=document.body;
+  body.classList.toggle("theme-dark",userPreferences.darkMode);
+  body.classList.toggle("density-compact",userPreferences.density==="compact");
+  body.classList.toggle("text-size-small",userPreferences.textSize==="small");
+  body.classList.toggle("text-size-large",userPreferences.textSize==="large");
+  body.classList.toggle("reduce-motion",userPreferences.reduceMotion);
+  body.classList.toggle("high-contrast",userPreferences.highContrast);
+  body.dataset.colorVision=userPreferences.colorVision;
+  renderNotifications();
+}
+function fillSettingsForm(){
+  $("settings-language").value=userPreferences.language;
+  $("settings-timezone").value=userPreferences.timeZone;
+  $("settings-region").value=userPreferences.region;
+  $("settings-dark-mode").checked=userPreferences.darkMode;
+  $("settings-density").value=userPreferences.density;
+  $("settings-text-size").value=userPreferences.textSize;
+  $("settings-announcements").checked=userPreferences.announcementAlerts;
+  $("settings-schedule-reminders").checked=userPreferences.scheduleAlerts;
+  $("settings-quiet-enabled").checked=userPreferences.quietHours;
+  $("settings-quiet-start").value=userPreferences.quietStart;
+  $("settings-quiet-end").value=userPreferences.quietEnd;
+  $("settings-notification-limit").value=String(userPreferences.dailyPopupLimit);
+  $("settings-activity-consent").checked=userPreferences.activityConsent;
+  $("settings-leaderboard-opt-in").checked=$("leaderboard-opt-in").checked;
+  $("settings-reduce-motion").checked=userPreferences.reduceMotion;
+  $("settings-no-autoplay").checked=userPreferences.noAutoplay;
+  $("settings-high-contrast").checked=userPreferences.highContrast;
+  $("settings-color-vision").value=userPreferences.colorVision;
+  $("settings-accent-color").value=$("theme-color").value||"#087f8c";
+  $("settings-device-name").textContent=`This browser · ${navigator.userAgentData?.platform||navigator.platform||"device"}`;
+}
+function populateTimeZones(){
+  const select=$("settings-timezone");
+  const zones=typeof Intl.supportedValuesOf==="function"?Intl.supportedValuesOf("timeZone"):["UTC","Africa/Kampala","Africa/Nairobi","Africa/Lagos","Europe/London","Europe/Paris","America/New_York","America/Los_Angeles","Asia/Dubai","Asia/Kolkata","Asia/Tokyo","Australia/Sydney"];
+  const current=DEFAULT_USER_PREFERENCES.timeZone;
+  if(!zones.includes(current))zones.push(current);
+  if(!zones.includes("UTC"))zones.push("UTC");
+  select.innerHTML=zones.sort().map(zone=>`<option value="${esc(zone)}">${esc(zone.replace(/_/g," "))}</option>`).join("");
+}
+function animateCountUp(element,target,decimals=0,suffix=""){
+  const value=Number(target);
+  if(!element||!Number.isFinite(value))return;
+  if(userPreferences.reduceMotion||window.matchMedia("(prefers-reduced-motion: reduce)").matches){element.textContent=value.toFixed(decimals)+suffix;return}
+  const start=performance.now(),duration=650;
+  const tick=now=>{
+    const progress=Math.min(1,(now-start)/duration),eased=1-Math.pow(1-progress,3);
+    element.textContent=(value*eased).toFixed(decimals)+suffix;
+    if(progress<1)requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
 function networkAwareFetch(input,init){
   return window.fetch(input,init).catch(error=>{
     if(error instanceof TypeError)window.dispatchEvent(new CustomEvent("medstudy:network-error",{detail:error}));
@@ -41,6 +141,8 @@ function pageStateKey(){return currentUser?"medstudy:last-page:"+currentUser.id:
 function authSessionKey(userId){return "medstudy:session-start:"+userId}
 function notificationReadKey(){return currentUser?"medstudy:read-notifications:"+currentUser.id:null}
 function calendarNoticeKey(){return currentUser?"medstudy:calendar-notifications:"+currentUser.id:null}
+function notificationResetMarkerKey(){return currentUser?"medstudy:notification-reset-at:"+currentUser.id:null}
+function dismissedCalendarNoticesKey(){return currentUser?"medstudy:dismissed-calendar-notices:"+currentUser.id:null}
 function websiteUsageKey(){return currentUser?"medstudy:website-usage:"+currentUser.id:null}
 function classPhoneAlertsKey(){return currentUser?"medstudy:phone-class-alerts:"+currentUser.id:null}
 function sentClassPhoneAlertsKey(){return currentUser?"medstudy:sent-phone-class-alerts:"+currentUser.id:null}
@@ -51,7 +153,7 @@ function formatTime(value){
   if(!value)return "";
   const [hours,minutes]=value.split(":").map(Number),date=new Date();
   date.setHours(hours,minutes,0,0);
-  return date.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+  return date.toLocaleTimeString(selectedLocale(),{hour:"numeric",minute:"2-digit"});
 }
 function formatDuration(milliseconds){
   const mins=Math.floor(milliseconds/60000),hours=Math.floor(mins/60),days=Math.floor(hours/24);
@@ -67,8 +169,56 @@ function saveWebsiteUsage(milliseconds){
   try{localStorage.setItem(websiteUsageKey(),String(milliseconds))}
   catch(error){console.warn("Could not save website usage.",error)}
 }
+function loadDismissedCalendarNoticeIds(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(dismissedCalendarNoticesKey())||"[]");
+    return new Set(Array.isArray(saved)?saved.map(String):[]);
+  }catch(error){console.warn("Could not load cleared reminder state.",error);return new Set()}
+}
+function applyActivityResetMarker(resetAt,force=false){
+  if(!currentUser)return false;
+  const resetTime=new Date(resetAt).getTime();
+  if(!Number.isFinite(resetTime))return false;
+  const markerKey=activityResetMarkerKey();
+  let previousTime=0;
+  try{previousTime=Number(localStorage.getItem(markerKey)||0)}
+  catch(error){console.warn("Could not read the activity reset marker.",error)}
+  if(!force&&resetTime<=previousTime)return false;
+  try{
+    localStorage.removeItem(websiteUsageKey());
+    localStorage.removeItem(studyStreakCacheKey());
+    localStorage.setItem(markerKey,String(resetTime));
+  }catch(error){console.error("Could not clear this browser's saved activity totals.",error);return false}
+  activityPendingSeconds=0;
+  usageLastTick=document.visibilityState==="visible"?Date.now():null;
+  studyStreak={current:0,longest:0,lastActiveDate:null,syncStatus:"Your study data was reset. A new streak starts with your next daily check-in."};
+  renderStudyStreak();renderWebsiteUsage();
+  return true;
+}
+function applyNotificationResetMarker(resetAt,force=false){
+  if(!currentUser)return false;
+  const resetTime=new Date(resetAt).getTime();
+  if(!Number.isFinite(resetTime))return false;
+  const markerKey=notificationResetMarkerKey();
+  let previousTime=0;
+  try{previousTime=Number(localStorage.getItem(markerKey)||0)}
+  catch(error){console.warn("Could not read the notification reset marker.",error)}
+  if(!force&&resetTime<=previousTime)return false;
+  const dismissed=loadDismissedCalendarNoticeIds();
+  calendarNotifications.forEach(item=>{
+    const createdAt=new Date(item.created_at).getTime();
+    if(Number.isFinite(createdAt)&&createdAt<=resetTime)dismissed.add(String(item.id));
+  });
+  calendarNotifications=calendarNotifications.filter(item=>new Date(item.created_at).getTime()>resetTime);
+  try{
+    localStorage.setItem(markerKey,String(resetTime));
+    localStorage.setItem(dismissedCalendarNoticesKey(),JSON.stringify([...dismissed].slice(-500)));
+  }catch(error){console.error("Could not save the notification reset state for this browser.",error)}
+  saveCalendarNotices();renderNotifications();
+  return true;
+}
 async function recordUserActivity(eventType,page=null,activeSeconds=0){
-  if(!currentUser||!db||activityLoggingUnavailable)return;
+  if(!currentUser||!db||activityLoggingUnavailable||!userPreferences.activityConsent)return;
   try{
     const {error}=await db.from("user_activity_log").insert({
       user_id:currentUser.id,event_type:eventType,page,
@@ -81,7 +231,7 @@ async function recordUserActivity(eventType,page=null,activeSeconds=0){
   }catch(error){console.error("Could not record website activity.",error)}
 }
 async function recordActiveTime(seconds,page){
-  if(!currentUser||!db||activityLoggingUnavailable)return;
+  if(!currentUser||!db||activityLoggingUnavailable||!userPreferences.activityConsent)return;
   try{
     const {error}=await db.rpc("record_user_active_time",{p_active_seconds:seconds,p_page:page});
     if(error){
@@ -105,7 +255,11 @@ function flushActivityTime(final=false){
 function loadCalendarNotices(){
   try{
     const saved=JSON.parse(localStorage.getItem(calendarNoticeKey())||"[]");
-    calendarNotifications=Array.isArray(saved)?saved.filter(item=>item&&item.id&&item.created_at&&Date.now()-new Date(item.created_at).getTime()<=NOTIFICATION_TTL_DAYS*DAY_MILLISECONDS):[];
+    const resetAt=Number(localStorage.getItem(notificationResetMarkerKey())||0),dismissed=loadDismissedCalendarNoticeIds();
+    calendarNotifications=Array.isArray(saved)?saved.filter(item=>{
+      const createdAt=new Date(item?.created_at).getTime();
+      return item&&item.id&&Number.isFinite(createdAt)&&createdAt>resetAt&&Date.now()-createdAt<=NOTIFICATION_TTL_DAYS*DAY_MILLISECONDS&&!dismissed.has(String(item.id));
+    }):[];
   }catch(error){console.warn("Could not load class and exam reminders.",error);calendarNotifications=[]}
 }
 function saveCalendarNotices(){
@@ -114,15 +268,41 @@ function saveCalendarNotices(){
 }
 function featureEnabled(key){return featureSettings[key]!==false}
 function allNotifications(){
-  const announcements=featureEnabled("announcements")?notifications:[];
-  const reminders=featureEnabled("schedule_reminders")?calendarNotifications:[];
+  const announcements=featureEnabled("announcements")&&userPreferences.announcementAlerts?notifications:[];
+  const reminders=featureEnabled("schedule_reminders")&&userPreferences.scheduleAlerts?calendarNotifications:[];
   return [...announcements,...reminders].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
 }
+function insideQuietHours(){
+  if(!userPreferences.quietHours)return false;
+  const parts=new Intl.DateTimeFormat("en-GB",{timeZone:userPreferences.timeZone,hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date());
+  const values=Object.fromEntries(parts.filter(part=>part.type!=="literal").map(part=>[part.type,Number(part.value)]));
+  const current=values.hour*60+values.minute;
+  const [startHour,startMinute]=userPreferences.quietStart.split(":").map(Number),[endHour,endMinute]=userPreferences.quietEnd.split(":").map(Number);
+  const start=startHour*60+startMinute,end=endHour*60+endMinute;
+  return start===end?true:start<end?current>=start&&current<end:current>=start||current<end;
+}
+function allowSchedulePopup(){
+  if(insideQuietHours())return false;
+  const key=`medstudy:reminder-popups:${currentUser.id}:${localDateKeyInZone()}`;
+  try{
+    const count=Number(localStorage.getItem(key)||0);
+    if(count>=userPreferences.dailyPopupLimit)return false;
+    localStorage.setItem(key,String(count+1));return true;
+  }catch(error){console.warn("Could not apply reminder popup limits.",error);return true}
+}
 function showLiveNotice(title,body){
+  if(streakCheckPending||$("streak-modal").classList.contains("is-open")){
+    queuedLiveNotices.push({title,body});queuedLiveNotices=queuedLiveNotices.slice(-5);return;
+  }
   const region=$("live-notice-region");
   region.innerHTML=`<article class="live-notice"><strong>${esc(title)}</strong><p>${esc(body)}</p></article>`;
   if(toastTimer)clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>{region.innerHTML=""},8000);
+}
+function flushQueuedLiveNotices(){
+  if(streakCheckPending||$("streak-modal").classList.contains("is-open")||!queuedLiveNotices.length)return;
+  const notice=queuedLiveNotices.shift();showLiveNotice(notice.title,notice.body);
+  if(queuedLiveNotices.length)setTimeout(flushQueuedLiveNotices,8100);
 }
 function showNetworkNotice(){
   showLiveNotice("Connection problem","Your session may have expired. Check your network connection, then log in again if needed.");
@@ -184,13 +364,97 @@ function startSessionExpiryTimer(userId){
 }
 window.addEventListener("focus",()=>{
   if(currentUser&&Date.now()-getSessionStartedAt(currentUser.id)>=SESSION_MAX_AGE)void expireAuthSession();
+  else if(currentUser)void syncActivityResetMarker(true);
 });
 function addCalendarNotice(id,title,body){
-  if(calendarNotifications.some(item=>item.id===id))return;
+  if(calendarNotifications.some(item=>item.id===id)||loadDismissedCalendarNoticeIds().has(String(id)))return;
   const created_at=new Date().toISOString();
   calendarNotifications.unshift({id,title,body,created_at,expires_at:new Date(Date.now()+NOTIFICATION_TTL_DAYS*DAY_MILLISECONDS).toISOString()});
   calendarNotifications=calendarNotifications.slice(0,100);
-  saveCalendarNotices();renderNotifications();showLiveNotice(title,body);
+  saveCalendarNotices();renderNotifications();
+  if(currentUser&&allowSchedulePopup())showLiveNotice(title,body);
+}
+function closeStreakCelebration(){
+  const modal=$("streak-modal");if(!modal)return;
+  modal.classList.remove("is-open");modal.setAttribute("aria-hidden","true");document.body.classList.remove("dialog-open");
+  flushQueuedLiveNotices();
+}
+function showStreakCelebration(shouldShow,wasReset=false){
+  if(!shouldShow)return;
+  const count=studyStreak.current;
+  $("streak-modal-title").textContent=wasReset?"Let's start a new streak!":count===1?"Your first day starts today!":"Your streak is on fire!";
+  $("streak-modal-description").textContent=wasReset
+    ?"Your previous streak ended after a missed day. Today is day one of a fresh start."
+    :count===1?"You checked in today. Come back tomorrow to keep your streak going.":`You've studied on ${count} consecutive days. Keep showing up each day!`;
+  $("streak-modal-count").textContent="0";
+  $("streak-modal-status").textContent=studyStreak.syncStatus;
+  const modal=$("streak-modal");modal.classList.add("is-open");modal.setAttribute("aria-hidden","false");document.body.classList.add("dialog-open");
+  animateCountUp($("streak-modal-count"),count);
+}
+function renderStudyStreak(){
+  const current=Math.max(0,Number(studyStreak.current)||0),longest=Math.max(current,Number(studyStreak.longest)||0);
+  $("streak-chip-count").textContent=String(current);
+  $("streak-current-count").textContent="0";$("streak-best-count").textContent="0";
+  animateCountUp($("streak-current-count"),current);animateCountUp($("streak-best-count"),longest);
+  $("streak-last-date").textContent=studyStreak.lastActiveDate
+    ?new Intl.DateTimeFormat(selectedLocale(),{dateStyle:"medium",timeZone:"UTC"}).format(new Date(`${studyStreak.lastActiveDate}T12:00:00Z`))
+    :"—";
+  $("streak-summary").textContent=current
+    ?`${current} consecutive day${current===1?"":"s"} so far. Your longest streak is ${longest} day${longest===1?"":"s"}.`
+    :"Visit each day to start building your study streak.";
+  const progress=current?current%7||7:0;
+  $("streak-progress-fill").style.width=`${progress/7*100}%`;
+  $("streak-progress").querySelector('[role="progressbar"]').setAttribute("aria-valuenow",String(progress));
+  $("streak-sync-status").textContent=studyStreak.syncStatus;
+}
+function recordLocalStudyDay(){
+  const today=localDateKeyInZone(),key=studyStreakCacheKey();
+  let previous=null,storageAvailable=true;
+  try{previous=JSON.parse(localStorage.getItem(key)||"null")}
+  catch(error){storageAvailable=false;console.warn("Could not read the local study streak.",error)}
+  let current=1,longest=Number(previous?.longest)||0,reset=false,shouldShow=true;
+  if(previous?.lastActiveDate){
+    const gap=Math.round((Date.parse(`${today}T00:00:00Z`)-Date.parse(`${previous.lastActiveDate}T00:00:00Z`))/DAY_MILLISECONDS);
+    if(gap===0){current=Number(previous.current)||1;shouldShow=false}
+    else if(gap===1)current=(Number(previous.current)||0)+1;
+    else{reset=(Number(previous.current)||0)>0;current=1}
+  }
+  longest=Math.max(longest,current);
+  try{localStorage.setItem(key,JSON.stringify({current,longest,lastActiveDate:today}))}
+  catch(error){storageAvailable=false;console.warn("Could not save the local study streak.",error)}
+  return {current,longest,lastActiveDate:today,shouldShow,streakReset:reset,storageAvailable};
+}
+async function loadStudyStreak(){
+  if(!currentUser)return;
+  const userId=currentUser.id;
+  try{
+    const {data,error}=await db.rpc("record_daily_study_streak",{p_time_zone:userPreferences.timeZone});
+    if(error)throw error;
+    if(currentUser?.id!==userId)return;
+    const row=Array.isArray(data)?data[0]:data;
+    if(!row)throw new Error("The streak service returned no result.");
+    studyStreak={
+      current:Number(row.current_streak)||0,longest:Number(row.longest_streak)||0,
+      lastActiveDate:row.last_active_date||null,syncStatus:"Synced across your devices."
+    };
+    let alreadyWelcomedToday=false;
+    try{alreadyWelcomedToday=JSON.parse(localStorage.getItem(studyStreakCacheKey())||"null")?.lastActiveDate===studyStreak.lastActiveDate}
+    catch(storageError){console.warn("Could not check the local streak welcome state.",storageError)}
+    try{localStorage.setItem(studyStreakCacheKey(),JSON.stringify({current:studyStreak.current,longest:studyStreak.longest,lastActiveDate:studyStreak.lastActiveDate}))}
+    catch(storageError){console.warn("Could not cache the study streak.",storageError)}
+    renderStudyStreak();showStreakCelebration(!!row.should_show&&!alreadyWelcomedToday,!!row.streak_reset);
+  }catch(error){
+    if(currentUser?.id!==userId)return;
+    console.error("Could not sync the study streak.",error);
+    const local=recordLocalStudyDay();
+    const syncMessage=!local.storageAvailable
+      ?"Browser storage is unavailable, so the streak may not persist."
+      :error.code==="PGRST202"||error.code==="PGRST205"
+      ?"Run the latest schema.sql to enable cross-device streaks."
+      :"Cloud sync failed: "+error.message;
+    studyStreak={current:local.current,longest:local.longest,lastActiveDate:local.lastActiveDate,syncStatus:`This streak is stored on this browser only. ${syncMessage}`};
+    renderStudyStreak();showStreakCelebration(local.shouldShow,local.streakReset);
+  }finally{if(currentUser?.id===userId){streakCheckPending=false;flushQueuedLiveNotices()}}
 }
 function loadSentPhoneAlertIds(){
   try{const saved=JSON.parse(localStorage.getItem(sentClassPhoneAlertsKey())||"[]");return new Set(Array.isArray(saved)?saved.map(String):[])}
@@ -306,7 +570,7 @@ function renderNotifications(){
   $("mark-all-read").classList.toggle("hidden",unreadCount===0);
   $("notification-list").innerHTML=items.length?items.map(item=>{
     const read=notificationReadIds.has(String(item.id));
-    return `<article class="notification-item${read?" is-read":""}"><div class="notification-item-heading"><h3>${esc(item.title)}</h3><time datetime="${esc(item.created_at)}">${esc(new Date(item.created_at).toLocaleString())}</time></div><p>${esc(item.body)}</p><div class="notification-item-footer"><span>Expires ${esc(new Date(item.expires_at).toLocaleDateString())}</span><button type="button" class="text-button" data-mark-notification="${esc(item.id)}" ${read?"disabled":""}>${read?"Read":"Mark as read"}</button></div></article>`;
+    return `<article class="notification-item${read?" is-read":""}"><div class="notification-item-heading"><h3>${esc(item.title)}</h3><time datetime="${esc(item.created_at)}">${esc(formatDateTime(item.created_at))}</time></div><p>${esc(item.body)}</p><div class="notification-item-footer"><span>Expires ${esc(formatDate(item.expires_at))}</span><button type="button" class="text-button" data-mark-notification="${esc(item.id)}" ${read?"disabled":""}>${read?"Read":"Mark as read"}</button></div></article>`;
   }).join(""):'<p class="notification-empty">You’re all caught up. New study-group announcements will appear here.</p>';
   renderAdminNotifications();
 }
@@ -314,14 +578,14 @@ function renderAdminNotifications(){
   const list=$("admin-notification-list");if(!list)return;
   if(!isAdmin){list.textContent="";return}
   if(!notifications.length){list.innerHTML='<p class="muted">No current announcements.</p>';return}
-  list.innerHTML=notifications.map(item=>`<article class="admin-notification-item"><div><h3>${esc(item.title)}</h3><p>${esc(item.body)}</p><span>Expires ${esc(new Date(item.expires_at).toLocaleString())}</span></div><button class="button button-light" type="button" data-delete-notification="${esc(item.id)}" aria-label="Delete announcement: ${esc(item.title)}">Delete</button></article>`).join("");
+  list.innerHTML=notifications.map(item=>`<article class="admin-notification-item"><div><h3>${esc(item.title)}</h3><p>${esc(item.body)}</p><span>Expires ${esc(formatDateTime(item.expires_at))}</span></div><button class="button button-light" type="button" data-delete-notification="${esc(item.id)}" aria-label="Delete announcement: ${esc(item.title)}">Delete</button></article>`).join("");
 }
 function renderGroupChatMessages(){
   const list=$("chat-message-list");if(!list)return;
   const wasNearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<60;
   list.innerHTML=groupChatMessages.length?groupChatMessages.map(item=>{
     const mine=item.user_id===currentUser.id;
-    return `<article class="chat-message${mine?" chat-message-mine":""}"><div><strong>${esc(item.display_name)}</strong><time datetime="${esc(item.created_at)}">${esc(new Date(item.created_at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}))}</time></div><p>${esc(item.message)}</p></article>`;
+    return `<article class="chat-message${mine?" chat-message-mine":""}"><div><strong>${esc(item.display_name)}</strong><time datetime="${esc(item.created_at)}">${esc(formatDateTime(item.created_at,{hour:"numeric",minute:"2-digit"}))}</time></div><p>${esc(item.message)}</p></article>`;
   }).join(""):'<p class="chat-empty">No messages yet. Start the conversation.</p>';
   if(wasNearBottom)list.scrollTop=list.scrollHeight;
 }
@@ -401,8 +665,21 @@ function applyFeatureSettings(){
 }
 async function loadNotifications(){
   if(!currentUser)return false;
-  const {data,error}=await db.from("notifications").select("id,title,body,created_at,expires_at")
-    .gt("expires_at",new Date().toISOString()).order("created_at",{ascending:false}).limit(100);
+  const [notificationResult,resetResult]=await Promise.all([
+    db.from("notifications").select("id,title,body,created_at,expires_at")
+      .gt("expires_at",new Date().toISOString()).order("created_at",{ascending:false}).limit(100),
+    db.from("feature_settings").select("updated_at").eq("key","notifications_reset").maybeSingle()
+  ]);
+  const {data,error}=notificationResult;
+  if(resetResult.error){
+    console.error("Could not check the shared notification reset marker.",resetResult.error);
+    if(isAdmin)message("admin-notification-reset-message","Run the latest schema.sql to enable clearing reminders for all users: "+resetResult.error.message,true);
+  }else if(resetResult.data){
+    applyNotificationResetMarker(resetResult.data.updated_at);
+    if(isAdmin)message("admin-notification-reset-message","");
+  }else if(isAdmin){
+    message("admin-notification-reset-message","Run the latest schema.sql to enable clearing reminders for all users.",true);
+  }
   if(error){
     console.error("Could not load notifications.",error);
     const detail=error.code==="PGRST205"
@@ -422,6 +699,33 @@ function closeNavigation(){
   $("main-navigation").classList.remove("is-open");
   $("nav-menu-toggle").setAttribute("aria-expanded","false");
   $("nav-menu-toggle").setAttribute("aria-label","Open menu");
+  updateDrawerBackdrop();
+}
+function updateDrawerBackdrop(){
+  const open=$("main-navigation").classList.contains("is-open")||$("settings-drawer").classList.contains("is-open");
+  $("drawer-backdrop").classList.toggle("is-open",open);
+  document.body.classList.toggle("drawer-open",open);
+}
+function openNavigation(){
+  closeSettings();closeNotificationPanel();
+  $("main-navigation").classList.remove("hidden");
+  $("main-navigation").classList.add("is-open");
+  $("nav-menu-toggle").setAttribute("aria-expanded","true");
+  $("nav-menu-toggle").setAttribute("aria-label","Close menu");
+  updateDrawerBackdrop();$("nav-menu-close").focus();
+}
+function closeSettings(){
+  $("settings-drawer").classList.remove("is-open");
+  $("settings-drawer").setAttribute("aria-hidden","true");
+  $("settings-toggle").setAttribute("aria-expanded","false");
+  updateDrawerBackdrop();
+}
+function openSettings(){
+  closeNavigation();closeNotificationPanel();fillSettingsForm();
+  $("settings-drawer").classList.add("is-open");
+  $("settings-drawer").setAttribute("aria-hidden","false");
+  $("settings-toggle").setAttribute("aria-expanded","true");
+  updateDrawerBackdrop();$("settings-close").focus();
 }
 function closeNotificationPanel(){
   $("notification-panel").classList.add("hidden");
@@ -469,10 +773,16 @@ $("logout-btn").onclick=async()=>{
 document.querySelectorAll("[data-page]").forEach(b=>b.addEventListener("click",()=>showPage(b.dataset.page)));
 document.querySelectorAll("[data-go]").forEach(b=>b.addEventListener("click",()=>showPage(b.dataset.go)));
 $("nav-menu-toggle").addEventListener("click",()=>{
-  const open=!$("main-navigation").classList.contains("is-open");
-  if(open){$("main-navigation").classList.add("is-open");$("nav-menu-toggle").setAttribute("aria-expanded","true");$("nav-menu-toggle").setAttribute("aria-label","Close menu")}
-  else closeNavigation();
+  if($("main-navigation").classList.contains("is-open"))closeNavigation();else openNavigation();
 });
+$("nav-menu-close").addEventListener("click",closeNavigation);
+$("settings-toggle").addEventListener("click",()=>{
+  if($("settings-drawer").classList.contains("is-open"))closeSettings();else openSettings();
+});
+$("settings-close").addEventListener("click",closeSettings);
+$("drawer-backdrop").addEventListener("click",()=>{closeNavigation();closeSettings()});
+$("streak-modal-close").addEventListener("click",closeStreakCelebration);
+$("streak-modal-done").addEventListener("click",closeStreakCelebration);
 $("notification-toggle").addEventListener("click",toggleNotificationPanel);
 $("notification-list").addEventListener("click",event=>{
   const button=event.target.closest("[data-mark-notification]");if(!button)return;
@@ -519,9 +829,10 @@ $("enable-class-phone-notifications").addEventListener("click",toggleClassPhoneN
 document.addEventListener("click",event=>{
   if(!event.target.closest(".notification-wrap"))closeNotificationPanel();
   if(!event.target.closest("#main-navigation")&&!event.target.closest("#nav-menu-toggle"))closeNavigation();
+  if(!event.target.closest("#settings-drawer")&&!event.target.closest("#settings-toggle"))closeSettings();
 });
 document.addEventListener("keydown",event=>{
-  if(event.key==="Escape"){closeNavigation();closeNotificationPanel();closeGroupChat()}
+  if(event.key==="Escape"){closeNavigation();closeSettings();closeNotificationPanel();closeGroupChat();closeStreakCelebration()}
 });
 function showPage(page,skipDataLoad=false){
   if(page==="admin"&&!isAdmin){showPage("home");return}
@@ -529,15 +840,16 @@ function showPage(page,skipDataLoad=false){
     (page==="classes"&&!featureEnabled("classes")&&!featureEnabled("exams"))||
     (page==="progress"&&!featureEnabled("leaderboards")&&!featureEnabled("practice_scores"))){showPage("home");return}
   if(page!=="home")closeGroupChat();
-  closeNavigation();
-  document.querySelectorAll(".page").forEach(p=>p.classList.add("hidden"));$("page-"+page).classList.remove("hidden");
+  closeNavigation();closeSettings();
+  document.querySelectorAll(".page").forEach(p=>p.classList.add("hidden"));
+  const targetPage=$("page-"+page);targetPage.classList.remove("hidden");targetPage.classList.remove("page-entering");void targetPage.offsetWidth;targetPage.classList.add("page-entering");
   void recordUserActivity("page_view",page);
   saveLastPage(page);
   document.querySelectorAll(".nav-link").forEach(n=>{
     const active=n.dataset.page===page;n.classList.toggle("active",active);
     if(active)n.setAttribute("aria-current","page");else n.removeAttribute("aria-current");
   });
-  if(page==="progress"){if(!skipDataLoad)loadAttempts();if(featureEnabled("leaderboards"))renderLeaderboard()}
+  if(page==="progress"){if(!skipDataLoad){void syncActivityResetMarker();loadAttempts()}if(featureEnabled("leaderboards"))renderLeaderboard()}
   if(page==="home"&&featureEnabled("leaderboards")&&!skipDataLoad)renderHomeLeaderboard();
   if(!skipDataLoad){
     if(page==="classes")loadClassAndExamData();
@@ -554,7 +866,8 @@ function signedOut(){
   $("admin-user-count").textContent="";$("admin-user-message").textContent="";
   $("admin-user-activity").classList.add("hidden");$("admin-user-activity-content").textContent="";
   if(currentUser)clearSessionStartedAt(currentUser.id);
-  closeGroupChat();currentUser=null;isAdmin=false;notifications=[];calendarNotifications=[];groupChatMessages=[];notificationReadIds=new Set();setProfileIdentity("Student");
+  queuedLiveNotices=[];streakCheckPending=false;
+  closeGroupChat();closeStreakCelebration();closeSettings();currentUser=null;isAdmin=false;activityResetSyncAvailable=false;userPreferences={...DEFAULT_USER_PREFERENCES};studyStreak={current:0,longest:0,lastActiveDate:null,syncStatus:""};notifications=[];calendarNotifications=[];groupChatMessages=[];notificationReadIds=new Set();setProfileIdentity("Student");applyUserPreferences();applyThemeColor(DEFAULT_THEME_COLOR);renderStudyStreak();
   closeNavigation();closeNotificationPanel();$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");
   $("user-tools").classList.add("hidden");$("main-navigation").classList.add("hidden");$("nav-menu-toggle").classList.add("hidden");$("admin-nav").classList.add("hidden");
   $("notification-badge").classList.add("hidden");$("notification-list").textContent="";
@@ -582,6 +895,7 @@ async function signedIn(user){
   }
   if(currentUser?.id===user.id&&!$("app-view").classList.contains("hidden"))return;
   currentUser=user;
+  userPreferences=loadUserPreferences();applyUserPreferences();fillSettingsForm();
   startSessionExpiryTimer(user.id);
   if(user.user_metadata?.requires_password_setup){
     $("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");
@@ -596,21 +910,23 @@ async function signedIn(user){
   $("main-navigation").classList.remove("hidden");$("nav-menu-toggle").classList.remove("hidden");
   void recordUserActivity("sign_in");
   courseSelects();startUsageTracking();showPage("home",true);
+  studyStreak.syncStatus="Checking your streak…";renderStudyStreak();
+  streakCheckPending=true;const profileLoad=loadProfile(),streakLoad=profileLoad.catch(error=>console.error("Could not load settings before the study streak.",error)).then(()=>loadStudyStreak());
   const accessSetup=Promise.allSettled([checkAdmin(),loadFeatureSettings()]);
-  const dataLoads=Promise.allSettled([loadContent(),loadAttempts(),loadProfile(),loadNotifications(),loadClassAndExamData()]);
+  const dataLoads=Promise.allSettled([loadContent(),loadAttempts(),profileLoad,loadNotifications(),loadClassAndExamData()]);
   const setupResults=await accessSetup;
   setupResults.filter(result=>result.status==="rejected").forEach(result=>console.error("Could not finish account setup.",result.reason));
   const initialPage=getLastPage();
   showPage(initialPage,true);updateClassNotificationControls();
   if(initialPage==="home"&&featureEnabled("leaderboards"))renderHomeLeaderboard();
   if(initialPage==="admin")loadAdmin();
-  dataLoads.then(results=>{
+  Promise.all([dataLoads,streakLoad]).then(([results])=>{
     results.filter(result=>result.status==="rejected").forEach(result=>console.error("Could not finish loading study data.",result.reason));
     startScheduleNotifications();
   });
 }
 $("profile-shortcut").addEventListener("click",()=>showPage("profile"));
-async function checkAdmin(){const {data,error}=await db.rpc("is_current_user_admin");isAdmin=!error&&data===true;$("admin-nav").classList.toggle("hidden",!isAdmin)}
+async function checkAdmin(){const {data,error}=await db.rpc("is_current_user_admin");isAdmin=!error&&data===true;$("admin-nav").classList.toggle("hidden",!isAdmin);$("settings-admin-link").classList.toggle("hidden",!isAdmin)}
 function renderCourses(){
   const icons={"Biochemistry":"⚗","Histology":"◉","Physiology":"♡","Embryology":"✳","Gross Anatomy":"⌘"};
   $("course-grid").innerHTML=COURSES.map(c=>`<article class="course-card"><div>${icons[c]}</div><h3>${c}</h3><p>Quizzes and learning materials for ${c.toLowerCase()}.</p><button class="button button-outline" data-course="${esc(c)}">Explore course</button></article>`).join("");
@@ -697,7 +1013,7 @@ function renderTimetable(){
   const selectedDate=new Date(),selectedJsDay=(activeTimetableDay+1)%7,jsDay=selectedDate.getDay();
   const dateOffset=jsDay===0||jsDay===6?(1-jsDay+7)%7:selectedJsDay-jsDay;
   selectedDate.setDate(selectedDate.getDate()+dateOffset);
-  $("timetable-date").textContent=selectedDate.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});
+  $("timetable-date").textContent=formatDateTime(selectedDate,{weekday:"long",month:"long",day:"numeric"});
   if(!scheduleDataLoaded){$("class-timetable").textContent=scheduleLoadError||"The class timetable is unavailable.";return}
   const rows=classSessions.filter(item=>Number(item.day_of_week)===activeTimetableDay+1)
     .sort((a,b)=>a.start_time.localeCompare(b.start_time));
@@ -722,7 +1038,7 @@ function renderExams(){
   list.innerHTML=upcoming.length?upcoming.map(exam=>`<article class="exam-card">
     <div class="exam-countdown"><strong>${esc(examCountdown(exam.starts_at,now))}</strong><span>until exam</span></div>
     <div class="exam-details"><span class="tag">${esc(exam.course)} • ${esc(exam.exam_type)}</span><h3>${esc(exam.exam_name)}</h3>
-      <p>Starts ${esc(new Date(exam.starts_at).toLocaleString())}</p><p>Ends ${esc(new Date(exam.ends_at).toLocaleString())}</p></div>
+      <p>Starts ${esc(formatDateTime(exam.starts_at))}</p><p>Ends ${esc(formatDateTime(exam.ends_at))}</p></div>
   </article>`).join(""):'<p class="muted">No upcoming exams have been scheduled.</p>';
 }
 function startScheduleNotifications(){
@@ -730,7 +1046,7 @@ function startScheduleNotifications(){
   const check=()=>{
     if(!currentUser)return;
     const now=new Date(),today=localDateKey(now),minuteOfDay=now.getHours()*60+now.getMinutes();
-    const showInApp=featureEnabled("schedule_reminders"),showClassInApp=showInApp&&featureEnabled("classes");
+    const showInApp=featureEnabled("schedule_reminders")&&userPreferences.scheduleAlerts,showClassInApp=showInApp&&featureEnabled("classes");
     const showPhone=phoneClassAlertsEnabled()&&featureEnabled("classes");
     if(showClassInApp||showPhone){
       for(const session of classSessions){
@@ -738,15 +1054,21 @@ function startScheduleNotifications(){
         const start=session.start_time.split(":").map(Number),end=session.end_time.split(":").map(Number);
         const startMinute=start[0]*60+start[1],endMinute=end[0]*60+end[1];
         const startId=`class-${session.id}-${today}-start`,endId=`class-${session.id}-${today}-end`;
-        if(minuteOfDay>=startMinute&&minuteOfDay<startMinute+5){
-          const title=`${session.course} class has started`,body=`${session.title} with ${session.lecturer} is now in session.`;
-          if(showClassInApp)addCalendarNotice(startId,title,body);
-          if(showPhone)showPhoneClassNotice(startId,title,body);
+        if(showClassInApp&&minuteOfDay>=startMinute){
+          const title=`${session.course} class has started`,body=`${session.title} with ${session.lecturer} ${minuteOfDay<endMinute?"is now in session.":"started earlier today."}`;
+          addCalendarNotice(startId,title,body);
         }
-        if(minuteOfDay>=endMinute&&minuteOfDay<endMinute+5){
+        if(showPhone&&minuteOfDay>=startMinute&&minuteOfDay<startMinute+5){
+          const title=`${session.course} class has started`,body=`${session.title} with ${session.lecturer} is now in session.`;
+          showPhoneClassNotice(startId,title,body);
+        }
+        if(showClassInApp&&minuteOfDay>=endMinute){
           const title=`${session.course} class has ended`,body=`${session.title} with ${session.lecturer} has finished.`;
-          if(showClassInApp)addCalendarNotice(endId,title,body);
-          if(showPhone)showPhoneClassNotice(endId,title,body);
+          addCalendarNotice(endId,title,body);
+        }
+        if(showPhone&&minuteOfDay>=endMinute&&minuteOfDay<endMinute+5){
+          const title=`${session.course} class has ended`,body=`${session.title} with ${session.lecturer} has finished.`;
+          showPhoneClassNotice(endId,title,body);
         }
       }
     }
@@ -754,7 +1076,7 @@ function startScheduleNotifications(){
       const start=new Date(exam.starts_at),days=Math.round((new Date(start.getFullYear(),start.getMonth(),start.getDate())-new Date(now.getFullYear(),now.getMonth(),now.getDate()))/DAY_MILLISECONDS);
       const reminderDays=[30,7,1];
       if(reminderDays.includes(days)){
-        addCalendarNotice(`exam-${exam.id}-${days}d-${today}`,`${exam.exam_name} is ${days===30?"one month":days===7?"one week":"one day"} away`,`${exam.course} ${exam.exam_type} starts ${start.toLocaleString()}.`);
+        addCalendarNotice(`exam-${exam.id}-${days}d-${today}`,`${exam.exam_name} is ${days===30?"one month":days===7?"one week":"one day"} away`,`${exam.course} ${exam.exam_type} starts ${formatDateTime(start)}.`);
       }
     }
   };
@@ -803,12 +1125,17 @@ async function renderResources(){
   };
   $("resource-list").innerHTML=visibleCourses.map(course=>{
     const courseRows=entries.filter(entry=>entry.resource.course===course);
-    const notes=courseRows.filter(entry=>entry.resource.resource_type!=="video");
-    const videos=courseRows.filter(entry=>entry.resource.resource_type==="video");
-    const showNotes=t!=="video",showVideos=t==="all"||t==="video";
+    const groups=[
+      ["note","Notes &amp; documents","No notes or documents yet."],
+      ["textbook","Textbooks &amp; references","No textbooks or references yet."],
+      ["video","Videos","No videos yet."],
+      ["other","Other resources","No other resources yet."]
+    ];
     return `<section class="course-resource-section"><h2>${esc(course)}</h2><div class="course-resource-columns">
-      ${showNotes?`<div class="resource-group"><h3>Notes &amp; documents</h3><div class="resource-group-cards">${notes.length?notes.map(card).join(""):'<p class="muted">No notes or documents yet.</p>'}</div></div>`:""}
-      ${showVideos?`<div class="resource-group"><h3>Videos</h3><div class="resource-group-cards">${videos.length?videos.map(card).join(""):'<p class="muted">No videos yet.</p>'}</div></div>`:""}
+      ${groups.filter(([type])=>t==="all"||t===type).map(([type,heading,empty])=>{
+        const matching=courseRows.filter(entry=>entry.resource.resource_type===type);
+        return `<div class="resource-group"><h3>${heading}</h3><div class="resource-group-cards">${matching.length?matching.map(card).join(""):`<p class="muted">${empty}</p>`}</div></div>`;
+      }).join("")}
     </div></section>`;
   }).join("");
   $("resource-list").removeAttribute("aria-busy");
@@ -829,14 +1156,15 @@ async function loadAttempts(){
 function renderPersonalStats(){
   const n=attempts.length,avg=n?attempts.reduce((s,a)=>s+100*Number(a.score)/Number(a.total_marks),0)/n:0;
   const verified=attempts.filter(a=>a.is_verified).length;
-  $("stats-grid").innerHTML=`<div class="stat"><strong>${n}</strong><span>Personal quizzes recorded</span></div><div class="stat"><strong>${avg.toFixed(1)}%</strong><span>Personal average</span></div><div class="stat"><strong>${verified}</strong><span>Verified scores</span></div><div class="stat"><strong id="website-usage-total">${esc(formatDuration(loadWebsiteUsage()))}</strong><span>Time on this device</span></div>`;
-  $("results-body").innerHTML=n?attempts.map(a=>`<tr><td>${new Date(a.created_at).toLocaleDateString()}</td><td>${esc(a.course)}</td><td>${esc(a.quiz_title)}</td><td>${Number(a.score)} / ${Number(a.total_marks)} (${(100*Number(a.score)/Number(a.total_marks)).toFixed(1)}%)</td><td><span class="status-pill ${a.is_verified?"status-published":"status-draft"}">${a.is_verified?"Verified":"Private / unverified"}</span></td></tr>`).join(""):'<tr><td colspan="5">No results recorded yet.</td></tr>';
-  renderChart();renderAchievements();
+  $("stats-grid").innerHTML=`<div class="stat"><strong data-count-up="${n}">${n}</strong><span>Personal quizzes recorded</span></div><div class="stat"><strong data-count-up="${avg.toFixed(1)}" data-count-decimals="1" data-count-suffix="%">${avg.toFixed(1)}%</strong><span>Personal average</span></div><div class="stat"><strong data-count-up="${verified}">${verified}</strong><span>Verified scores</span></div><div class="stat"><strong id="website-usage-total">${esc(formatDuration(loadWebsiteUsage()))}</strong><span>Time on this device</span></div>`;
+  $("stats-grid").querySelectorAll("[data-count-up]").forEach(item=>animateCountUp(item,item.dataset.countUp,Number(item.dataset.countDecimals)||0,item.dataset.countSuffix||""));
+  $("results-body").innerHTML=n?attempts.map(a=>`<tr><td>${esc(formatDate(a.created_at))}</td><td>${esc(a.course)}</td><td>${esc(a.quiz_title)}</td><td>${Number(a.score)} / ${Number(a.total_marks)} (${(100*Number(a.score)/Number(a.total_marks)).toFixed(1)}%)</td><td><span class="status-pill ${a.is_verified?"status-published":"status-draft"}">${a.is_verified?"Verified":"Private / unverified"}</span></td></tr>`).join(""):'<tr><td colspan="5">No results recorded yet.</td></tr>';
+  renderStudyStreak();renderChart();renderAchievements();
 }
 function renderChart(){
   const ctx=$("performance-chart");if(chart)chart.destroy();
   const dayKeys=[...new Set(attempts.map(a=>new Date(a.created_at).toISOString().slice(0,10)))].sort();
-  const labels=dayKeys.map(day=>new Date(day+"T00:00:00").toLocaleDateString());
+  const labels=dayKeys.map(day=>formatDate(`${day}T12:00:00Z`,{dateStyle:"medium",timeZone:"UTC"}));
   const datasets=COURSES.map(course=>({
     label:course,
     data:dayKeys.map(day=>{
@@ -862,20 +1190,54 @@ async function loadProfile(){
   const userId=currentUser.id,panel=document.querySelector(".profile-panel");
   panel.setAttribute("aria-busy","true");message("profile-message","Loading your profile…");
   try{
-    const {data,error}=await db.from("profiles").select("display_name,leaderboard_opt_in,full_name,theme_color,class_name,favorite_subject,quiz_rank").eq("id",userId).single();
-    if(error)throw error;
+    const baseFields=["display_name","leaderboard_opt_in","full_name","theme_color","class_name","favorite_subject","quiz_rank"];
+    let fields=[...baseFields,"preferences","activity_reset_at"];
+    let profile=await db.from("profiles").select(fields.join(",")).eq("id",userId).single();
+    let preferencesAvailable=true,resetMarkerAvailable=true;
+    for(let retry=0;profile.error&&retry<2;retry++){
+      const errorText=profile.error.message||"";
+      if(preferencesAvailable&&(profile.error.code==="42703"||profile.error.code==="PGRST204")&&/preferences.*(column|schema cache)|column.*preferences/i.test(errorText)){
+        preferencesAvailable=false;fields=fields.filter(field=>field!=="preferences");
+      }else if(resetMarkerAvailable&&(profile.error.code==="42703"||profile.error.code==="PGRST204")&&/activity_reset_at.*(column|schema cache)|column.*activity_reset_at/i.test(errorText)){
+        resetMarkerAvailable=false;fields=fields.filter(field=>field!=="activity_reset_at");
+      }else break;
+      console.warn("The profile table is missing a newer optional settings column.",profile.error);
+      profile=await db.from("profiles").select(fields.join(",")).eq("id",userId).single();
+    }
+    if(profile.error)throw profile.error;
+    const {data}=profile;
     if(currentUser?.id!==userId)return;
+    activityResetSyncAvailable=resetMarkerAvailable;
+    const activityWasReset=resetMarkerAvailable&&data.activity_reset_at?applyActivityResetMarker(data.activity_reset_at):false;
+    if(preferencesAvailable&&data.preferences&&typeof data.preferences==="object"&&!Array.isArray(data.preferences)){
+      userPreferences=sanitizeUserPreferences({...userPreferences,...data.preferences});
+      applyUserPreferences();fillSettingsForm();
+    }
     const themeColor=data.theme_color||DEFAULT_THEME_COLOR;
     if(!applyThemeColor(themeColor)){message("profile-message","Your saved website colour is invalid. Choose a new colour and save your profile.",true);return}
     const displayName=data.display_name||data.full_name||"Student";
     $("display-name").value=displayName;$("class-name").value=data.class_name||"";$("favorite-subject").value=data.favorite_subject||"";$("quiz-rank").value=data.quiz_rank||"";
-    $("leaderboard-opt-in").checked=!!data.leaderboard_opt_in;$("theme-color").value=themeColor;setProfileIdentity(displayName);
+    $("leaderboard-opt-in").checked=!!data.leaderboard_opt_in;$("settings-leaderboard-opt-in").checked=!!data.leaderboard_opt_in;$("theme-color").value=themeColor;$("settings-accent-color").value=themeColor;setProfileIdentity(displayName);
     $("home-display-name").textContent=displayName;$("home-class-name").textContent=data.class_name||"Class / year not set";
+    if(!preferencesAvailable)message("settings-message","Preferences are stored on this browser until the latest schema.sql is applied for cross-device sync.");
     message("profile-message","");
+    if(activityWasReset)await loadAttempts();
   }catch(error){
     console.error("Could not load profile settings.",error);
     message("profile-message","Could not load profile settings: "+error.message,true);
   }finally{panel.removeAttribute("aria-busy")}
+}
+async function syncActivityResetMarker(refreshResults=false){
+  if(!currentUser||!activityResetSyncAvailable)return false;
+  const userId=currentUser.id;
+  try{
+    const {data,error}=await db.from("profiles").select("activity_reset_at").eq("id",userId).single();
+    if(error)throw error;
+    if(currentUser?.id!==userId||!data.activity_reset_at)return false;
+    const reset=applyActivityResetMarker(data.activity_reset_at);
+    if(reset&&refreshResults)await loadAttempts();
+    return reset;
+  }catch(error){console.error("Could not check the latest activity reset.",error);return false}
 }
 function applyThemeColor(color){
   if(!/^#[0-9a-f]{6}$/i.test(color))return false;
@@ -894,8 +1256,9 @@ function applyThemeColor(color){
   root.style.setProperty("--theme-focus","rgba("+channels.join(",")+",.1)");
   return true;
 }
-$("theme-color").addEventListener("input",e=>applyThemeColor(e.target.value));
-$("reset-theme-color").addEventListener("click",()=>{$("theme-color").value=DEFAULT_THEME_COLOR;applyThemeColor(DEFAULT_THEME_COLOR)});
+$("theme-color").addEventListener("input",e=>{$("settings-accent-color").value=e.target.value;applyThemeColor(e.target.value)});
+$("settings-accent-color").addEventListener("input",e=>{$("theme-color").value=e.target.value;applyThemeColor(e.target.value)});
+$("reset-theme-color").addEventListener("click",()=>{$("theme-color").value=DEFAULT_THEME_COLOR;$("settings-accent-color").value=DEFAULT_THEME_COLOR;applyThemeColor(DEFAULT_THEME_COLOR)});
 $("profile-form").addEventListener("submit",async e=>{
   e.preventDefault();const name=$("display-name").value.trim(),themeColor=$("theme-color").value;if(!name){message("profile-message","Please enter a display name.",true);return}
   if(!applyThemeColor(themeColor)){message("profile-message","Choose a valid website colour.",true);return}
@@ -904,16 +1267,102 @@ $("profile-form").addEventListener("submit",async e=>{
     quiz_rank:$("quiz-rank").value.trim()||null,leaderboard_opt_in:$("leaderboard-opt-in").checked,theme_color:themeColor
   }).eq("id",currentUser.id);
   message("profile-message",error?error.message:"Profile saved.",!!error);if(!error){
+    $("settings-leaderboard-opt-in").checked=$("leaderboard-opt-in").checked;$("settings-accent-color").value=themeColor;
     setProfileIdentity(name);$("home-display-name").textContent=name;
     $("home-class-name").textContent=$("class-name").value.trim()||"Class / year not set";
     renderLeaderboard();renderHomeLeaderboard()
   }
 });
-async function sendPasswordReset(){
-  const {error}=await db.auth.resetPasswordForEmail(currentUser.email,{redirectTo:location.origin+location.pathname});
-  message("security-message",error?error.message:"If the address is registered, a password-reset link has been sent.",!!error);
+async function saveUserSettings(event){
+  event.preventDefault();
+  const accentColor=$("settings-accent-color").value;
+  const dailyPopupLimit=Number($("settings-notification-limit").value);
+  if(!currentUser||!/^#[0-9a-f]{6}$/i.test(accentColor)){message("settings-message","Choose a valid accent colour.",true);return}
+  if(!Number.isInteger(dailyPopupLimit)||dailyPopupLimit<1||dailyPopupLimit>20){message("settings-message","Reminder popup limit must be between 1 and 20.",true);return}
+  const next={
+    language:$("settings-language").value,timeZone:$("settings-timezone").value,region:$("settings-region").value,
+    darkMode:$("settings-dark-mode").checked,density:$("settings-density").value,textSize:$("settings-text-size").value,
+    announcementAlerts:$("settings-announcements").checked,scheduleAlerts:$("settings-schedule-reminders").checked,
+    quietHours:$("settings-quiet-enabled").checked,quietStart:$("settings-quiet-start").value,quietEnd:$("settings-quiet-end").value,
+    dailyPopupLimit,activityConsent:$("settings-activity-consent").checked,
+    reduceMotion:$("settings-reduce-motion").checked,noAutoplay:$("settings-no-autoplay").checked,
+    highContrast:$("settings-high-contrast").checked,colorVision:$("settings-color-vision").value
+  };
+  if(!next.quietStart||!next.quietEnd){message("settings-message","Enter both quiet-hour times.",true);return}
+  userPreferences={...DEFAULT_USER_PREFERENCES,...next};
+  if(!userPreferences.activityConsent)activityPendingSeconds=0;
+  applyUserPreferences();applyThemeColor(accentColor);$("theme-color").value=accentColor;
+  let localError=null,profileError=null,profileSyncNotice="";
+  try{localStorage.setItem(userPreferencesKey(),JSON.stringify(userPreferences))}
+  catch(error){localError=error;console.error("Could not save device settings.",error)}
+  try{
+    let result=await db.from("profiles").update({
+      theme_color:accentColor,leaderboard_opt_in:$("settings-leaderboard-opt-in").checked,preferences:userPreferences
+    }).eq("id",currentUser.id);
+    if(result.error&&(result.error.code==="42703"||result.error.code==="PGRST204"||/preferences.*(column|schema cache)|column.*preferences/i.test(result.error.message||""))){
+      console.warn("Account preference sync requires the latest schema.",result.error);
+      profileSyncNotice="Device preferences are saved, but cross-device sync requires the latest schema.sql.";
+      result=await db.from("profiles").update({theme_color:accentColor,leaderboard_opt_in:$("settings-leaderboard-opt-in").checked}).eq("id",currentUser.id);
+    }
+    profileError=result.error;
+  }catch(error){profileError=error;console.error("Could not save account settings.",error)}
+  $("leaderboard-opt-in").checked=$("settings-leaderboard-opt-in").checked;
+  fillSettingsForm();
+  if(!profileError){renderLeaderboard();renderHomeLeaderboard()}
+  if(liveNoticeTimer)startScheduleNotifications();
+  const errors=[];
+  if(localError)errors.push("Device preferences could not be saved: "+localError.message);
+  if(profileError)errors.push("Other settings were saved on this device, but profile appearance/leaderboard preference failed: "+profileError.message);
+  message("settings-message",errors.join(" ")||profileSyncNotice||"Settings saved.",errors.length>0);
 }
-$("profile-reset-password").onclick=sendPasswordReset;
+$("settings-form").addEventListener("submit",saveUserSettings);
+function resetCount(row,key){return Number(row?.[key])||0}
+function formatResetCount(row,key,singular,plural=singular+"s"){
+  const count=resetCount(row,key);
+  return `${count} ${count===1?singular:plural}`;
+}
+async function resetMyStudyData(){
+  if(!currentUser)return;
+  if(!confirm("This permanently deletes your web activity, active-time totals, study streak and all quiz results. Your profile, account and study content will remain."))return;
+  if(prompt("Type RESET MY STUDY DATA to confirm.")?.trim()!=="RESET MY STUDY DATA")return;
+  const button=$("settings-reset-study-data");button.disabled=true;
+  let resetCompleted=false;
+  message("settings-reset-data-message","Resetting your study data…");
+  try{
+    const {data,error}=await db.rpc("reset_my_study_data");
+    if(error)throw error;
+    const row=Array.isArray(data)?data[0]:data;
+    if(!row?.reset_at)throw new Error("The reset completed without returning its reset timestamp.");
+    resetCompleted=true;
+    applyActivityResetMarker(row.reset_at,true);
+    attempts=[];
+    renderPersonalStats();
+    if(featureEnabled("leaderboards")){void renderLeaderboard();void renderHomeLeaderboard()}
+    message("settings-reset-data-message",`Reset complete: ${formatResetCount(row,"activity_events_deleted","activity event")}, ${formatResetCount(row,"active_time_days_deleted","active-time total")}, ${formatResetCount(row,"streak_deleted","streak")} and ${formatResetCount(row,"quiz_results_deleted","quiz result")} cleared.`);
+  }catch(error){
+    console.error("Could not reset personal study data.",error);
+    const detail=error.code==="PGRST202"?"Run the latest schema.sql in Supabase first. "+error.message:error.message;
+    message("settings-reset-data-message",resetCompleted?"Study data was reset, but the page could not refresh: "+error.message:"Could not reset study data: "+detail,true);
+  }finally{button.disabled=false}
+}
+$("settings-reset-study-data").addEventListener("click",resetMyStudyData);
+async function sendPasswordReset(messageId="security-message"){
+  if(!currentUser){message(messageId,"Sign in before requesting a password reset.",true);return}
+  const {error}=await db.auth.resetPasswordForEmail(currentUser.email,{redirectTo:location.origin+location.pathname});
+  message(messageId,error?error.message:"If the address is registered, a password-reset link has been sent.",!!error);
+}
+$("profile-reset-password").onclick=()=>sendPasswordReset();
+$("settings-reset-password").addEventListener("click",()=>sendPasswordReset("settings-security-message"));
+$("settings-signout-others").addEventListener("click",async()=>{
+  if(!currentUser||!confirm("Sign out all other devices connected to this account? This device will remain signed in."))return;
+  const button=$("settings-signout-others");button.disabled=true;message("settings-security-message","Signing out other devices…");
+  try{
+    const {error}=await db.auth.signOut({scope:"others"});
+    if(error)throw error;
+    message("settings-security-message","Other devices have been signed out. This device remains connected.");
+  }catch(error){message("settings-security-message","Could not sign out other devices: "+error.message,true)}
+  finally{button.disabled=false}
+});
 $("password-update-form").addEventListener("submit",async e=>{
   e.preventDefault();const password=$("new-password").value;
   const requiredSetup=!!currentUser?.user_metadata?.requires_password_setup;
@@ -962,7 +1411,7 @@ async function renderLeaderboard(){
     }
     if(activeBoard==="activity"){
       const rows=await getView("recent_group_activity");
-      box.innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Student</th><th>Course</th><th>Quiz</th><th>Result</th><th>Date</th></tr></thead><tbody>${rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,20).map(r=>`<tr><td>${esc(r.display_name)}</td><td>${esc(r.course)}</td><td>${esc(r.quiz_title)}</td><td>${Number(r.percentage).toFixed(1)}%</td><td>${new Date(r.created_at).toLocaleDateString()}</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">No recent verified activity.</p>';
+      box.innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Student</th><th>Course</th><th>Quiz</th><th>Result</th><th>Date</th></tr></thead><tbody>${rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,20).map(r=>`<tr><td>${esc(r.display_name)}</td><td>${esc(r.course)}</td><td>${esc(r.quiz_title)}</td><td>${Number(r.percentage).toFixed(1)}%</td><td>${esc(formatDate(r.created_at))}</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">No recent verified activity.</p>';
     }
   }catch(err){box.innerHTML=`<p class="muted">Could not load rankings: ${esc(err.message)}</p>`}
   finally{box.removeAttribute("aria-busy")}
@@ -975,9 +1424,9 @@ function renderAdminUsers(){
   if(!rows.length){$("admin-user-list").innerHTML='<p class="muted">No loaded users match that search. Load more users to search the next page.</p>';return}
   $("admin-user-list").innerHTML=`<div class="table-wrap"><table class="admin-users-table"><thead><tr><th>User</th><th>Email</th><th>Class / year</th><th>Account status</th><th>Last sign-in</th><th>Last website activity</th><th>Actions</th></tr></thead><tbody>${rows.map(user=>{
     const banned=user.banned_until&&new Date(user.banned_until)>new Date();
-    const status=banned?`Banned until ${esc(new Date(user.banned_until).toLocaleDateString())}`:user.email_confirmed_at?"Active":"Invitation pending";
-    const lastSignIn=user.last_sign_in_at?new Date(user.last_sign_in_at).toLocaleString():"Never";
-    const lastActivity=user.last_activity_at?new Date(user.last_activity_at).toLocaleString():"No activity recorded";
+    const status=banned?`Banned until ${esc(formatDate(user.banned_until))}`:user.email_confirmed_at?"Active":"Invitation pending";
+    const lastSignIn=user.last_sign_in_at?formatDateTime(user.last_sign_in_at):"Never";
+    const lastActivity=user.last_activity_at?formatDateTime(user.last_activity_at):"No activity recorded";
     const actions=`<button class="button button-outline" type="button" data-user-activity="${esc(user.id)}">Activity</button>${user.is_admin?'<span class="status-pill status-published">Admin protected</span>':`<button class="button button-light" type="button" data-user-ban="${esc(user.id)}" data-banned="${banned}">${banned?"Restore access":"Ban access"}</button><button class="button button-danger" type="button" data-user-delete="${esc(user.id)}">Delete</button>`}`;
     return `<tr><td>${esc(user.display_name||"Student")}</td><td>${esc(user.email)}</td><td>${esc(user.class_name||"—")}</td><td>${esc(status)}</td><td>${esc(lastSignIn)}</td><td>${esc(lastActivity)}</td><td><div class="admin-actions">${actions}</div></td></tr>`;
   }).join("")}</tbody></table></div>`;
@@ -1041,8 +1490,8 @@ async function showAdminUserActivity(userId){
   const activeSeconds=daily.reduce((sum,item)=>sum+Number(item.active_seconds||0),0);
   const pageViews=events.filter(item=>item.event_type==="page_view").length;
   const labels={sign_in:"Signed in",page_view:"Visited page",active_time:"Active time",sign_out:"Signed out",page_closed:"Closed page"};
-  const eventTable=events.length?`<h4>Sign-ins and page visits</h4><div class="table-wrap"><table><thead><tr><th>When</th><th>Activity</th><th>Page</th></tr></thead><tbody>${events.map(item=>`<tr><td>${esc(new Date(item.created_at).toLocaleString())}</td><td>${esc(labels[item.event_type]||item.event_type)}</td><td>${esc(item.page||"—")}</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">No sign-in or page activity has been recorded yet.</p>';
-  const dailyTable=daily.length?`<h4>Active time by day (last 30 days)</h4><div class="table-wrap"><table><thead><tr><th>Date</th><th>Active time</th><th>Last active</th><th>Last page</th></tr></thead><tbody>${daily.map(item=>`<tr><td>${esc(new Date(item.activity_date+"T00:00:00").toLocaleDateString())}</td><td>${esc(formatDuration(Number(item.active_seconds)*1000))}</td><td>${esc(new Date(item.last_active_at).toLocaleString())}</td><td>${esc(item.last_page||"—")}</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">No visible active time has been recorded in the last 30 days.</p>';
+  const eventTable=events.length?`<h4>Sign-ins and page visits</h4><div class="table-wrap"><table><thead><tr><th>When</th><th>Activity</th><th>Page</th></tr></thead><tbody>${events.map(item=>`<tr><td>${esc(formatDateTime(item.created_at))}</td><td>${esc(labels[item.event_type]||item.event_type)}</td><td>${esc(item.page||"—")}</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">No sign-in or page activity has been recorded yet.</p>';
+  const dailyTable=daily.length?`<h4>Active time by day (last 30 days)</h4><div class="table-wrap"><table><thead><tr><th>Date</th><th>Active time</th><th>Last active</th><th>Last page</th></tr></thead><tbody>${daily.map(item=>`<tr><td>${esc(formatDate(`${item.activity_date}T12:00:00Z`,{dateStyle:"medium",timeZone:"UTC"}))}</td><td>${esc(formatDuration(Number(item.active_seconds)*1000))}</td><td>${esc(formatDateTime(item.last_active_at))}</td><td>${esc(item.last_page||"—")}</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">No visible active time has been recorded in the last 30 days.</p>';
   $("admin-user-activity-content").innerHTML=`<div class="stats-grid"><div class="stat"><strong>${pageViews}</strong><span>Page visits in recent events</span></div><div class="stat"><strong>${esc(formatDuration(activeSeconds*1000))}</strong><span>Active time in last 30 days</span></div><div class="stat"><strong>${events.length}</strong><span>Recent events shown (up to 100)</span></div></div>${eventTable}${dailyTable}`;
 }
 async function manageAdminUser(action,userId){
@@ -1134,7 +1583,7 @@ async function loadAdminSchedules(){
   scheduleDataLoaded=true;scheduleLoadError=null;classSessions=classes.data||[];mbExams=exams.data||[];
   renderTimetable();renderExams();
   $("admin-class-list").innerHTML=classSessions.length?classSessions.map(item=>`<article class="admin-item"><div><h3>${esc(item.title)}</h3><p>${esc(WEEKDAYS[Number(item.day_of_week)-1])} • ${esc(item.course)} • ${esc(formatTime(item.start_time))}–${esc(formatTime(item.end_time))} • ${esc(item.lecturer)}</p></div><div class="admin-actions"><button class="button button-outline" type="button" data-schedule-edit="class" data-id="${item.id}">Edit</button><button class="button button-light" type="button" data-schedule-delete="class" data-id="${item.id}">Delete</button></div></article>`).join(""):'<p class="muted">No classes have been added.</p>';
-  $("admin-exam-list").innerHTML=mbExams.length?mbExams.map(item=>`<article class="admin-item"><div><h3>${esc(item.exam_name)} <span class="status-pill status-published">${esc(item.exam_type)}</span></h3><p>${esc(item.course)} • ${esc(new Date(item.starts_at).toLocaleString())} to ${esc(new Date(item.ends_at).toLocaleString())}</p></div><div class="admin-actions"><button class="button button-outline" type="button" data-schedule-edit="exam" data-id="${item.id}">Edit</button><button class="button button-light" type="button" data-schedule-delete="exam" data-id="${item.id}">Delete</button></div></article>`).join(""):'<p class="muted">No exams have been added.</p>';
+  $("admin-exam-list").innerHTML=mbExams.length?mbExams.map(item=>`<article class="admin-item"><div><h3>${esc(item.exam_name)} <span class="status-pill status-published">${esc(item.exam_type)}</span></h3><p>${esc(item.course)} • ${esc(formatDateTime(item.starts_at))} to ${esc(formatDateTime(item.ends_at))}</p></div><div class="admin-actions"><button class="button button-outline" type="button" data-schedule-edit="exam" data-id="${item.id}">Edit</button><button class="button button-light" type="button" data-schedule-delete="exam" data-id="${item.id}">Delete</button></div></article>`).join(""):'<p class="muted">No exams have been added.</p>';
 }
 function clearScheduleForm(type){
   const isClass=type==="class",form=$(isClass?"admin-class-form":"admin-exam-form");
@@ -1160,6 +1609,11 @@ $("admin-exam-form").addEventListener("submit",async event=>{
 });
 $("admin-class-cancel").addEventListener("click",()=>clearScheduleForm("class"));
 $("admin-exam-cancel").addEventListener("click",()=>clearScheduleForm("exam"));
+$("admin-resource-type").addEventListener("change",()=>{
+  const textbook=$("admin-resource-type").value==="textbook",resourceUrl=$("admin-resource-url"),driveUrl=$("admin-resource-drive-url");
+  if(textbook&&!driveUrl.value&&resourceUrl.value){driveUrl.value=resourceUrl.value;resourceUrl.value=""}
+  else if(!textbook&&!resourceUrl.value&&driveUrl.value){resourceUrl.value=driveUrl.value;driveUrl.value=""}
+});
 function clearAdminForm(type){
   const quiz=type==="quiz";$(quiz?"admin-quiz-form":"admin-resource-form").reset();$(quiz?"admin-quiz-id":"admin-resource-id").value="";
   $(quiz?"admin-quiz-heading":"admin-resource-heading").textContent=quiz?"Add a quiz":"Add a resource";
@@ -1211,6 +1665,56 @@ $("admin-notification-form").addEventListener("submit",async event=>{
   }catch(error){message("admin-notification-message","Could not send announcement: "+error.message,true)}
   finally{submit.disabled=false}
 });
+$("admin-reset-all-study-data").addEventListener("click",async()=>{
+  if(!isAdmin)return;
+  if(!confirm("This permanently deletes every user's web activity, active-time totals, study streak and quiz results. Profiles, accounts and study content will remain."))return;
+  if(prompt("Type RESET ALL STUDY DATA to confirm.")?.trim()!=="RESET ALL STUDY DATA")return;
+  const button=$("admin-reset-all-study-data");button.disabled=true;
+  let resetCompleted=false;
+  message("admin-reset-data-message","Resetting study data for all users…");
+  try{
+    const {data,error}=await db.rpc("admin_reset_all_study_data");
+    if(error)throw error;
+    const row=Array.isArray(data)?data[0]:data;
+    if(!row?.reset_at)throw new Error("The reset completed without returning its reset timestamp.");
+    resetCompleted=true;
+    applyActivityResetMarker(row.reset_at,true);
+    attempts=[];renderPersonalStats();
+    if(featureEnabled("leaderboards")){void renderLeaderboard();void renderHomeLeaderboard()}
+    $("admin-user-activity").classList.add("hidden");
+    adminUserRows.forEach(user=>user.last_activity_at=null);renderAdminUsers();
+    void loadAdmin();
+    message("admin-reset-data-message",`Reset complete: ${formatResetCount(row,"activity_events_deleted","activity event")}, ${formatResetCount(row,"active_time_days_deleted","active-time total")}, ${formatResetCount(row,"streaks_deleted","streak")} and ${formatResetCount(row,"quiz_results_deleted","quiz result")} cleared for all users.`);
+  }catch(error){
+    console.error("Could not reset study data for all users.",error);
+    const detail=error.code==="PGRST202"?"Run the latest schema.sql in Supabase first. "+error.message:error.message;
+    message("admin-reset-data-message",resetCompleted?"All user data was reset, but the dashboard could not refresh: "+error.message:"Could not reset all users' data: "+detail,true);
+  }finally{button.disabled=false}
+});
+$("admin-notifications-clear").addEventListener("click",async()=>{
+  if(!isAdmin)return;
+  if(!confirm("This permanently deletes every shared announcement and tells all signed-in users to clear saved class/exam reminders at their next notification-centre sync."))return;
+  if(prompt("Type CLEAR ALL NOTIFICATIONS to confirm.")?.trim()!=="CLEAR ALL NOTIFICATIONS")return;
+  const button=$("admin-notifications-clear");button.disabled=true;
+  let resetCompleted=false;
+  message("admin-notification-reset-message","Clearing notification centres…");
+  try{
+    const {data,error}=await db.rpc("admin_clear_notifications");
+    if(error)throw error;
+    const row=Array.isArray(data)?data[0]:data;
+    if(!row?.reminders_reset_at)throw new Error("Notifications were cleared without returning the reminder reset marker.");
+    resetCompleted=true;
+    applyNotificationResetMarker(row.reminders_reset_at,true);
+    const refreshed=await loadNotifications();
+    message("admin-notification-reset-message",refreshed
+      ?`Cleared ${formatResetCount(row,"announcements_deleted","shared announcement")}. Saved class/exam reminders will clear for users the next time their centre syncs.`
+      :"Notifications were cleared, but this centre could not refresh. Try Refresh.",!refreshed);
+  }catch(error){
+    console.error("Could not clear notification centres.",error);
+    const detail=error.code==="PGRST202"?"Run the latest schema.sql in Supabase first. "+error.message:error.message;
+    message("admin-notification-reset-message",resetCompleted?"Notifications were cleared, but the centre could not refresh: "+error.message:"Could not clear notification centres: "+detail,true);
+  }finally{button.disabled=false}
+});
 const DOCUMENT_TYPES={
   pdf:"application/pdf",doc:"application/msword",
   docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1223,17 +1727,20 @@ async function removeUploadedDocument(path){
 }
 $("admin-resource-form").onsubmit=async e=>{
   e.preventDefault();if(!isAdmin)return;
-  const id=$("admin-resource-id").value,urlInput=$("admin-resource-url").value.trim(),file=$("admin-resource-file").files[0]||null;
+  const id=$("admin-resource-id").value,urlInput=$("admin-resource-url").value.trim(),driveUrlInput=$("admin-resource-drive-url").value.trim(),file=$("admin-resource-file").files[0]||null;
   const existing=id?adminResources.find(item=>String(item.id)===id):null,type=$("admin-resource-type").value;
-  if(type==="video"&&(file||(existing?.storage_path&&!urlInput))){message("admin-resource-message","Video resources must be added as a video URL.",true);return}
+  if(type==="textbook"&&urlInput&&driveUrlInput){message("admin-resource-message","Use either the resource URL or the Google Drive textbook link, not both.",true);return}
+  if(type!=="textbook"&&driveUrlInput){message("admin-resource-message","Use the Google Drive textbook link only for textbook resources.",true);return}
+  const resourceUrl=type==="textbook"?driveUrlInput||urlInput:urlInput;
+  if(type==="video"&&(file||(existing?.storage_path&&!resourceUrl))){message("admin-resource-message","Video resources must be added as a video URL.",true);return}
   if(file){
     const extension=(file.name.split(".").pop()||"").toLowerCase();
     if(!DOCUMENT_TYPES[extension]||file.size===0||file.size>50*1024*1024){message("admin-resource-message","Choose a non-empty PDF, Word, PowerPoint or text document no larger than 50 MB.",true);return}
   }
-  if(!file&&urlInput&&!safeUrl(urlInput)){message("admin-resource-message","Enter a valid http/https URL.",true);return}
-  if(!file&&!urlInput&&!existing?.storage_path){message("admin-resource-message","Enter a resource URL or choose a document to upload.",true);return}
+  if(!file&&resourceUrl&&!safeUrl(resourceUrl)){message("admin-resource-message","Enter a valid http/https URL.",true);return}
+  if(!file&&!resourceUrl&&!existing?.storage_path){message("admin-resource-message","Enter a resource URL or choose a document to upload.",true);return}
   const oldStoragePath=existing?.storage_path||null;
-  let storagePath=oldStoragePath&&!urlInput?oldStoragePath:null,uploadedPath=null;
+  let storagePath=oldStoragePath&&!resourceUrl?oldStoragePath:null,uploadedPath=null;
   const submit=$("admin-resource-form").querySelector('[type="submit"]');submit.disabled=true;
   let resourceSaved=false;
   try{
@@ -1245,7 +1752,7 @@ $("admin-resource-form").onsubmit=async e=>{
     }
     const row={
       course:$("admin-resource-course").value,title:$("admin-resource-title").value.trim(),description:$("admin-resource-description").value.trim(),
-      resource_type:type,url:storagePath?null:urlInput||null,storage_path:storagePath,is_published:$("admin-resource-published").checked
+      resource_type:type,url:storagePath?null:resourceUrl||null,storage_path:storagePath,is_published:$("admin-resource-published").checked
     };
     const res=id?await db.from("resources").update(row).eq("id",id):await db.from("resources").insert(row);
     if(res.error){
@@ -1300,7 +1807,7 @@ $("page-admin").addEventListener("click",async e=>{
   if(edit){
     const quiz=edit.dataset.edit==="quiz",row=(quiz?adminQuizzes:adminResources).find(x=>String(x.id)===edit.dataset.id);if(!row)return;
     if(quiz){$("admin-quiz-id").value=row.id;$("admin-quiz-course").value=row.course;$("admin-quiz-title").value=row.title;$("admin-quiz-description").value=row.description||"";$("admin-quiz-difficulty").value=row.difficulty||"Practice";$("admin-quiz-url").value=row.google_form_url;$("admin-quiz-form-id").value=row.google_form_id||"";$("admin-quiz-published").checked=row.is_published;$("admin-quiz-heading").textContent="Edit quiz";$("admin-quiz-form").scrollIntoView({behavior:"smooth"})}
-    else{$("admin-resource-id").value=row.id;$("admin-resource-course").value=row.course;$("admin-resource-title").value=row.title;$("admin-resource-description").value=row.description||"";$("admin-resource-type").value=row.resource_type;$("admin-resource-url").value=row.url||"";$("admin-resource-file-help").textContent=row.storage_path?`Current document: ${row.storage_path.split("/").pop()}. Leave empty to keep it, or select a replacement.`:"PDF, Word, PowerPoint or text documents up to 50 MB. Videos should be added as links.";$("admin-resource-published").checked=row.is_published;$("admin-resource-heading").textContent="Edit resource";$("admin-resource-form").scrollIntoView({behavior:"smooth"})}
+    else{$("admin-resource-id").value=row.id;$("admin-resource-course").value=row.course;$("admin-resource-title").value=row.title;$("admin-resource-description").value=row.description||"";$("admin-resource-type").value=row.resource_type;$("admin-resource-url").value=row.resource_type==="textbook"?"":row.url||"";$("admin-resource-drive-url").value=row.resource_type==="textbook"?row.url||"":"";$("admin-resource-file-help").textContent=row.storage_path?`Current document: ${row.storage_path.split("/").pop()}. Leave empty to keep it, or select a replacement.`:"PDF, Word, PowerPoint or text documents up to 50 MB. Videos should be added as links.";$("admin-resource-published").checked=row.is_published;$("admin-resource-heading").textContent="Edit resource";$("admin-resource-form").scrollIntoView({behavior:"smooth"})}
   }
   if(toggle){const type=toggle.dataset.toggle,table=type==="quiz"?"quizzes":"resources",rows=type==="quiz"?adminQuizzes:adminResources,row=rows.find(x=>String(x.id)===toggle.dataset.id);if(!row)return;
     const {error}=await db.from(table).update({is_published:!row.is_published}).eq("id",row.id);if(error)alert(error.message);else{await loadAdminLists();await loadContent()}}
@@ -1310,6 +1817,7 @@ $("page-admin").addEventListener("click",async e=>{
   }}
 });
 async function init(){
+  populateTimeZones();
   if(!navigator.onLine)showNetworkNotice();
   if("serviceWorker" in navigator){
     navigator.serviceWorker.register("./service-worker.js").catch(error=>console.warn("Could not register the app service worker.",error));

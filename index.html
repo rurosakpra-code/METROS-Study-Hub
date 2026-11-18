@@ -23,7 +23,7 @@
     </button>
     <a class="brand" href="#" data-page="home">METROS Study <span>Hub</span></a>
     <div id="user-tools" class="user-tools hidden">
-      <div class="notification-wrap">
+      <div id="notification-wrap" class="notification-wrap">
         <button id="notification-toggle" class="icon-button notification-toggle" type="button" aria-label="Open notification centre" aria-controls="notification-panel" aria-expanded="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"></path></svg>
           <span id="notification-badge" class="notification-badge hidden" aria-hidden="true"></span>
@@ -39,18 +39,70 @@
       <button id="profile-shortcut" class="profile-shortcut" type="button" aria-label="Open My profile">
         <span id="user-avatar" class="user-avatar" aria-hidden="true">S</span><span id="user-display-name">Student</span>
       </button>
+      <button id="settings-toggle" class="icon-button settings-toggle" type="button" aria-label="Open settings" aria-controls="settings-drawer" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"></path><path d="m19.4 15 .1.1a1.7 1.7 0 0 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 0 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 1 1-2.4-2.4l.1-.1a1.7 1.7 0 0 0-1.2-2.9H4a1.7 1.7 0 0 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 1 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2.1a1.7 1.7 0 0 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 1 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 0 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.8Z"></path></svg>
+      </button>
       <button id="logout-btn" class="button button-light" type="button">Log out</button>
     </div>
   </div>
   <div class="nav-shell">
-    <nav id="main-navigation" class="nav-tabs hidden" aria-label="Main navigation">
+    <nav id="main-navigation" class="nav-tabs nav-drawer hidden" aria-label="Main navigation">
+      <div class="drawer-heading"><div><p class="eyebrow">METROS STUDY HUB</p><h2>Navigation</h2></div><button id="nav-menu-close" class="icon-button drawer-close" type="button" aria-label="Close navigation">×</button></div>
       <button class="nav-link active" type="button" data-page="home">Home</button><button class="nav-link" type="button" data-page="quizzes" data-feature-nav="quizzes">Quizzes</button>
       <button class="nav-link" type="button" data-page="classes">Classes / exams</button>
       <button class="nav-link" type="button" data-page="progress">Results &amp; progress</button><button class="nav-link" type="button" data-page="resources" data-feature-nav="resources">Notes &amp; videos</button>
       <button class="nav-link" type="button" data-page="profile">My profile</button><button class="nav-link hidden" type="button" id="admin-nav" data-page="admin">Admin dashboard</button>
     </nav>
   </div>
+  <aside id="settings-drawer" class="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settings-heading" aria-hidden="true">
+    <div class="drawer-heading settings-heading"><div><p class="eyebrow">PERSONALIZE YOUR HUB</p><h2 id="settings-heading">Settings</h2></div><button id="settings-close" class="icon-button drawer-close" type="button" aria-label="Close settings">×</button></div>
+    <form id="settings-form" class="settings-form">
+      <div class="settings-sections">
+        <details class="settings-section" open><summary>Account &amp; General</summary>
+          <button class="button button-outline settings-profile-link" type="button" data-go="profile">Open profile and account details</button>
+          <button class="button button-outline settings-profile-link hidden" id="settings-admin-link" type="button" data-page="admin">Admin dashboard</button>
+          <label>Language and regional format<select id="settings-language"><option value="system">System default (English interface)</option><option value="en-GB">English (United Kingdom)</option><option value="en-US">English (United States)</option></select></label>
+          <label>Time zone for dates and reminders<select id="settings-timezone"></select></label>
+          <label>Preferred study region<select id="settings-region"><option value="global">Global</option><option value="east-africa">East Africa</option><option value="west-africa">West Africa</option><option value="southern-africa">Southern Africa</option><option value="middle-east">Middle East</option><option value="europe">Europe</option><option value="americas">Americas</option><option value="asia-pacific">Asia-Pacific</option></select><span class="field-help">Your preference; course access is unchanged.</span></label>
+        </details>
+        <details class="settings-section"><summary>Appearance</summary>
+          <label class="settings-switch"><span>Dark mode</span><input id="settings-dark-mode" type="checkbox"></label>
+          <label>Theme / accent colour<input id="settings-accent-color" type="color" value="#087f8c"></label>
+          <label>Layout density<select id="settings-density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+          <label>Text size<select id="settings-text-size"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></label>
+        </details>
+        <details class="settings-section"><summary>Notifications</summary>
+          <label class="settings-switch"><span>Group announcements</span><input id="settings-announcements" type="checkbox"></label>
+          <label class="settings-switch"><span>Class and exam reminders</span><input id="settings-schedule-reminders" type="checkbox"></label>
+          <label class="settings-switch"><span>Quiet hours for reminder popups</span><input id="settings-quiet-enabled" type="checkbox"></label>
+          <div class="settings-time-row"><label>Quiet hours start<input id="settings-quiet-start" type="time" value="22:00"></label><label>Quiet hours end<input id="settings-quiet-end" type="time" value="07:00"></label></div>
+          <label>Reminder popup limit per day<input id="settings-notification-limit" type="number" min="1" max="20" value="6"><span class="field-help">Saved class and exam notices remain in the notification centre.</span></label>
+        </details>
+        <details class="settings-section"><summary>Privacy &amp; Security</summary>
+          <label class="settings-switch"><span>Allow activity reports for admins</span><input id="settings-activity-consent" type="checkbox"></label>
+          <label class="settings-switch"><span>Show my verified results on the leaderboard</span><input id="settings-leaderboard-opt-in" type="checkbox"></label>
+          <button class="button button-outline full-width" id="settings-reset-study-data" type="button">Reset my study data</button>
+          <span class="field-help">Clears your activity history, active-time totals, streak and quiz results. Profile, account and course content stay.</span>
+          <p id="settings-reset-data-message" class="message" role="status"></p>
+          <div class="settings-device-card"><strong>Current device</strong><span id="settings-device-name">This browser</span><small>Other signed-in devices can be disconnected below.</small></div>
+          <button class="button button-outline full-width" id="settings-signout-others" type="button">Sign out other devices</button>
+          <button class="button button-outline full-width" id="settings-reset-password" type="button">Send password reset email</button>
+          <button class="button button-outline full-width" type="button" data-go="profile">Manage account and deletion</button>
+          <p id="settings-security-message" class="message" role="status"></p>
+        </details>
+        <details class="settings-section"><summary>Motion &amp; Visuals</summary>
+          <label class="settings-switch"><span>Reduce animations</span><input id="settings-reduce-motion" type="checkbox"></label>
+          <label class="settings-switch"><span>Disable autoplay for embedded videos</span><input id="settings-no-autoplay" type="checkbox"></label>
+          <label class="settings-switch"><span>Increase contrast</span><input id="settings-high-contrast" type="checkbox"></label>
+          <label>Color-vision palette<select id="settings-color-vision"><option value="none">Default</option><option value="blue-orange">Blue and orange</option><option value="monochrome">Monochrome</option></select></label>
+          <p class="field-help">Video links open only when selected. The autoplay preference applies if embedded media is added.</p>
+        </details>
+      </div>
+      <div class="settings-footer"><p id="settings-message" class="message" role="status"></p><button class="button button-primary full-width" type="submit">Save settings</button></div>
+    </form>
+  </aside>
 </header>
+<button id="drawer-backdrop" class="drawer-backdrop" type="button" tabindex="-1" aria-hidden="true"></button>
 <main>
 <section id="auth-view" class="auth-layout">
   <div class="intro"><p class="eyebrow">LEARN • PRACTISE • TRACK</p><h1>Your medical studies,<br><span>in one place.</span></h1>
@@ -115,8 +167,14 @@
 </section>
 
 <section id="page-progress" class="page hidden">
-  <div class="page-heading"><div><p class="eyebrow">KEEP MOVING FORWARD</p><h1>Results &amp; progress</h1><p>Review your personal results and compare verified group performance.</p></div><button class="button button-outline" id="refresh-leaderboard" type="button" aria-live="polite">Refresh ↻</button></div>
+  <div class="page-heading"><div><p class="eyebrow">KEEP MOVING FORWARD</p><h1>Results &amp; progress</h1><p>Review your personal results and compare verified group performance.</p></div><div class="progress-heading-tools"><div id="streak-chip" class="streak-chip" aria-label="Current study streak"><span aria-hidden="true">🔥</span><strong id="streak-chip-count">0</strong><small>day streak</small></div><button class="button button-outline" id="refresh-leaderboard" type="button" aria-live="polite">Refresh ↻</button></div></div>
   <div class="notice">Scores you enter manually are marked unverified and remain in your private record. Official leaderboards use verified Google Forms scores only.</div>
+  <section id="streak-progress" class="panel streak-progress-panel" aria-labelledby="streak-progress-heading">
+    <div class="streak-progress-heading"><div><p class="eyebrow">YOUR STUDY HABIT</p><h2 id="streak-progress-heading">Daily study streak</h2><p id="streak-summary">Your consecutive days of returning to MedStudy Hub.</p></div><span class="streak-flame" aria-hidden="true">🔥</span></div>
+    <div class="streak-progress-stats"><div><strong id="streak-current-count">0</strong><span>Current streak</span></div><div><strong id="streak-best-count">0</strong><span>Longest streak</span></div><div><strong id="streak-last-date">—</strong><span>Last visit</span></div></div>
+    <div class="streak-progress-track" role="progressbar" aria-label="Progress to a seven-day study streak" aria-valuemin="0" aria-valuemax="7" aria-valuenow="0"><span id="streak-progress-fill"></span></div>
+    <p id="streak-sync-status" class="field-help" role="status"></p>
+  </section>
   <div id="score-entry-panel" class="panel"><h2>Record a practice score</h2><p class="muted">Use this for personal tracking when a quiz is not connected to automatic score import.</p>
     <form id="score-form" class="score-form"><label>Course<select id="score-course" required></select></label><label>Quiz title<input id="score-title" required maxlength="140" placeholder="e.g. Cell Biology Test 1"></label>
     <label>Score earned<input id="score-earned" type="number" min="0" step="0.01" required></label><label>Total marks<input id="score-total" type="number" min="0.01" step="0.01" required></label><button class="button button-primary" type="submit">Save private score</button></form><p id="score-message" class="message" role="status"></p>
@@ -165,6 +223,7 @@
   <details class="admin-section" open><summary>Overview</summary><div id="admin-stats" class="stats-grid"></div></details>
   <details class="admin-section" open><summary>Users and website activity</summary>
     <p class="muted">Invite people by email, review account status, or inspect recent sign-ins, page visits and active time. Activity logging does not collect typed content or chat messages.</p>
+    <div class="panel danger-panel admin-reset-panel"><h3>Reset study data for everyone</h3><p>This permanently clears all users' web activity, active-time totals, study streaks and quiz results. Accounts, profiles and course content remain. Users' saved active-time totals on other devices clear the next time their profile syncs.</p><button class="button button-danger" id="admin-reset-all-study-data" type="button">Reset all users' study data</button><p id="admin-reset-data-message" class="message" role="status"></p></div>
     <form id="admin-invite-user-form" class="admin-user-invite">
       <label>Email address<input id="admin-invite-email" type="email" autocomplete="email" maxlength="254" required placeholder="student@example.com"></label>
       <label>Display name (optional)<input id="admin-invite-name" type="text" maxlength="80" placeholder="Student name"></label>
@@ -226,6 +285,7 @@
         <label>Description<textarea id="admin-resource-description" rows="3" maxlength="500"></textarea></label>
         <label>Resource type<select id="admin-resource-type"><option value="note">Notes</option><option value="textbook">Textbook / reference</option><option value="video">Video link</option><option value="other">Other</option></select></label>
         <label>Resource URL (for web pages or videos)<input id="admin-resource-url" type="url" placeholder="https://..."></label>
+        <label>Google Drive textbook link<input id="admin-resource-drive-url" type="url" placeholder="https://drive.google.com/..."><span class="field-help">For textbooks, paste a Google Drive sharing link and make sure the intended users have access.</span></label>
         <label>Or upload a document<input id="admin-resource-file" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.rtf"><span id="admin-resource-file-help" class="field-help">PDF, Word, PowerPoint or text documents up to 50 MB. Videos should be added as links.</span></label>
         <label class="check-label"><input id="admin-resource-published" type="checkbox"> Publish immediately</label>
         <div class="button-row"><button class="button button-primary" type="submit">Save resource</button><button class="button button-light" type="button" id="admin-resource-cancel">Clear</button></div><p id="admin-resource-message" class="message" role="status"></p>
@@ -245,7 +305,9 @@
   </details>
   <details class="admin-section"><summary>Group announcements</summary>
     <section class="panel admin-notifications-panel" aria-labelledby="admin-notifications-heading">
-      <div class="leaderboard-heading"><div><h2 id="admin-notifications-heading">Send a group announcement</h2><p class="muted">Share reading reminders, test dates or other updates. Announcements disappear from the centre after 14 days.</p></div><button class="button button-outline" id="admin-notifications-refresh" type="button">Refresh</button></div>
+      <div class="leaderboard-heading"><div><h2 id="admin-notifications-heading">Send a group announcement</h2><p class="muted">Share reading reminders, test dates or other updates. Announcements disappear from the centre after 14 days.</p></div><div class="button-row"><button class="button button-outline" id="admin-notifications-refresh" type="button">Refresh</button><button class="button button-danger" id="admin-notifications-clear" type="button">Clear notification centres</button></div></div>
+      <p class="field-help">Clearing removes shared announcements and users' saved class/exam reminders when their notification centre next syncs.</p>
+      <p id="admin-notification-reset-message" class="message" role="status"></p>
       <form id="admin-notification-form">
         <label>Announcement title<input id="admin-notification-title" type="text" maxlength="120" required placeholder="e.g. Physiology test on Friday"></label>
         <label>Message for everyone<textarea id="admin-notification-body" rows="3" maxlength="1200" required placeholder="Share what to read, when to meet, or what students should know."></textarea></label>
@@ -263,5 +325,15 @@
 </section>
 </main>
 <footer>METROS Study Hub <span>•</span> Built for collaborative learning</footer>
+<div id="streak-modal" class="streak-modal" aria-hidden="true">
+  <section class="streak-dialog" role="dialog" aria-modal="true" aria-labelledby="streak-modal-title" aria-describedby="streak-modal-description">
+    <button id="streak-modal-close" class="icon-button streak-modal-close" type="button" aria-label="Close streak celebration">×</button>
+    <span class="streak-modal-fire" aria-hidden="true">🔥</span><p class="eyebrow">DAILY STUDY STREAK</p>
+    <h2 id="streak-modal-title">Welcome back!</h2><p id="streak-modal-description">You're building a great study habit.</p>
+    <div class="streak-modal-count"><strong id="streak-modal-count">0</strong><span>day streak</span></div>
+    <p id="streak-modal-status" class="field-help" role="status"></p>
+    <button id="streak-modal-done" class="button button-primary full-width" type="button">Continue studying</button>
+  </section>
+</div>
 <div id="live-notice-region" class="live-notice-region" aria-live="polite" aria-atomic="true"></div>
 </body></html>
