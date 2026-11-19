@@ -2,7 +2,7 @@
 const SUPABASE_URL = "https://qiwqluwtmpflmekgjiob.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SA2ullhPQI-ftOEUfBqcvQ_oRendrnb";
 // Public read-only Google Drive folder configuration. Restrict the API key by HTTP referrer and Drive API.
-const GOOGLE_DRIVE_API_KEY = "YOUR_GOOGLE_DRIVE_API_KEY";
+const GOOGLE_DRIVE_API_KEY = "AIzaSyD53iYS0MZgzcQBBXHXVXEISqytGHin0Sk";
 const GOOGLE_DRIVE_FOLDER_ID = "YOUR_GOOGLE_DRIVE_FOLDER_ID";
 const configured = !SUPABASE_URL.startsWith("YOUR_") && !SUPABASE_ANON_KEY.startsWith("YOUR_");
 const db = configured && window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY,{global:{fetch:networkAwareFetch}}) : null;
