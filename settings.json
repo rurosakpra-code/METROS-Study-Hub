@@ -1,5 +1,0 @@
-{
-  "deno.enablePaths": [
-    "./MedStudy_Hub_Final/supabase/functions"
-  ]
-}
