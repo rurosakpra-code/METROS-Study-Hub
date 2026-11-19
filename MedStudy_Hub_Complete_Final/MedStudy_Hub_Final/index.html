@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="MedStudy Hub — collaborative medical learning and progress tracking">
+  <meta name="theme-color" content="#087f8c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>METROS Study Hub</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+<header class="site-header">
+  <div id="topbar" class="topbar">
+    <button id="nav-menu-toggle" class="icon-button mobile-menu-toggle hidden" type="button" aria-label="Open menu" aria-controls="main-navigation" aria-expanded="false">
+      <span class="menu-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+    </button>
+    <a class="brand" href="#" data-page="home">METROS Study <span>Hub</span></a>
+    <div id="user-tools" class="user-tools hidden">
+      <div id="notification-wrap" class="notification-wrap">
+        <button id="notification-toggle" class="icon-button notification-toggle" type="button" aria-label="Open notification centre" aria-controls="notification-panel" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"></path></svg>
+          <span id="notification-badge" class="notification-badge hidden" aria-hidden="true"></span>
+        </button>
+        <section id="notification-panel" class="notification-panel hidden" aria-label="Notification centre">
+          <div class="notification-panel-heading">
+            <div><h2>Notifications</h2><p id="notification-summary">Announcements for your study group.</p></div>
+            <button id="mark-all-read" class="text-button hidden" type="button">Mark all read</button>
+          </div>
+          <div id="notification-list" class="notification-list" aria-live="polite"></div>
+        </section>
+      </div>
+      <button id="profile-shortcut" class="profile-shortcut" type="button" aria-label="Open My profile">
+        <span id="user-avatar" class="user-avatar" aria-hidden="true">S</span><span id="user-display-name">Student</span>
+      </button>
+      <button id="settings-toggle" class="icon-button settings-toggle" type="button" aria-label="Open settings" aria-controls="settings-drawer" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"></path><path d="m19.4 15 .1.1a1.7 1.7 0 0 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 0 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 1 1-2.4-2.4l.1-.1a1.7 1.7 0 0 0-1.2-2.9H4a1.7 1.7 0 0 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 1 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2.1a1.7 1.7 0 0 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 1 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 0 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.8Z"></path></svg>
+      </button>
+      <button id="logout-btn" class="button button-light" type="button">Log out</button>
+    </div>
+  </div>
+  <div class="nav-shell">
+    <nav id="main-navigation" class="nav-tabs nav-drawer hidden" aria-label="Main navigation">
+      <div class="drawer-heading"><div><p class="eyebrow">METROS STUDY HUB</p><h2>Navigation</h2></div><button id="nav-menu-close" class="icon-button drawer-close" type="button" aria-label="Close navigation">×</button></div>
+      <button class="nav-link active" type="button" data-page="home">Home</button><button class="nav-link" type="button" data-page="quizzes" data-feature-nav="quizzes">Quizzes</button>
+      <button class="nav-link" type="button" data-page="classes">Classes / exams</button>
+      <button class="nav-link" type="button" data-page="progress">Results &amp; progress</button><button class="nav-link" type="button" data-page="resources" data-feature-nav="resources">Notes &amp; videos</button>
+      <button class="nav-link" type="button" data-page="profile">My profile</button><button class="nav-link hidden" type="button" id="admin-nav" data-page="admin">Admin dashboard</button>
+    </nav>
+  </div>
+  <aside id="settings-drawer" class="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settings-heading" aria-hidden="true">
+    <div class="drawer-heading settings-heading"><div><p class="eyebrow">PERSONALIZE YOUR HUB</p><h2 id="settings-heading">Settings</h2></div><button id="settings-close" class="icon-button drawer-close" type="button" aria-label="Close settings">×</button></div>
+    <form id="settings-form" class="settings-form">
+      <div class="settings-sections">
+        <details class="settings-section" open><summary>Account &amp; General</summary>
+          <button class="button button-outline settings-profile-link" type="button" data-go="profile">Open profile and account details</button>
+          <button class="button button-outline settings-profile-link hidden" id="settings-admin-link" type="button" data-page="admin">Admin dashboard</button>
+          <label>Language and regional format<select id="settings-language"><option value="system">System default (English interface)</option><option value="en-GB">English (United Kingdom)</option><option value="en-US">English (United States)</option></select></label>
+          <label>Time zone for dates and reminders<select id="settings-timezone"></select></label>
+          <label>Preferred study region<select id="settings-region"><option value="global">Global</option><option value="east-africa">East Africa</option><option value="west-africa">West Africa</option><option value="southern-africa">Southern Africa</option><option value="middle-east">Middle East</option><option value="europe">Europe</option><option value="americas">Americas</option><option value="asia-pacific">Asia-Pacific</option></select><span class="field-help">Your preference; course access is unchanged.</span></label>
+        </details>
+        <details class="settings-section"><summary>Appearance</summary>
+          <label class="settings-switch"><span>Dark mode</span><input id="settings-dark-mode" type="checkbox"></label>
+          <label>Theme / accent colour<input id="settings-accent-color" type="color" value="#087f8c"></label>
+          <label>Layout density<select id="settings-density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+          <label>Text size<select id="settings-text-size"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></label>
+        </details>
+        <details class="settings-section"><summary>Notifications</summary>
+          <label class="settings-switch"><span>Group announcements</span><input id="settings-announcements" type="checkbox"></label>
+          <label class="settings-switch"><span>Class and exam reminders</span><input id="settings-schedule-reminders" type="checkbox"></label>
+          <label class="settings-switch"><span>Quiet hours for reminder popups</span><input id="settings-quiet-enabled" type="checkbox"></label>
+          <div class="settings-time-row"><label>Quiet hours start<input id="settings-quiet-start" type="time" value="22:00"></label><label>Quiet hours end<input id="settings-quiet-end" type="time" value="07:00"></label></div>
+          <label>Reminder popup limit per day<input id="settings-notification-limit" type="number" min="1" max="20" value="6"><span class="field-help">Saved class and exam notices remain in the notification centre.</span></label>
+        </details>
+        <details class="settings-section"><summary>Privacy &amp; Security</summary>
+          <label class="settings-switch"><span>Allow activity reports for admins</span><input id="settings-activity-consent" type="checkbox"></label>
+          <label class="settings-switch"><span>Show my verified results on the leaderboard</span><input id="settings-leaderboard-opt-in" type="checkbox"></label>
+          <button class="button button-outline full-width" id="settings-reset-study-data" type="button">Reset my study data</button>
+          <span class="field-help">Clears your activity history, active-time totals, streak and quiz results. Profile, account and course content stay.</span>
+          <p id="settings-reset-data-message" class="message" role="status"></p>
+          <div class="settings-device-card"><strong>Current device</strong><span id="settings-device-name">This browser</span><small>Other signed-in devices can be disconnected below.</small></div>
+          <button class="button button-outline full-width" id="settings-signout-others" type="button">Sign out other devices</button>
+          <button class="button button-outline full-width" id="settings-reset-password" type="button">Send password reset email</button>
+          <button class="button button-outline full-width" type="button" data-go="profile">Manage account and deletion</button>
+          <p id="settings-security-message" class="message" role="status"></p>
+        </details>
+        <details class="settings-section"><summary>Motion &amp; Visuals</summary>
+          <label class="settings-switch"><span>Reduce animations</span><input id="settings-reduce-motion" type="checkbox"></label>
+          <label class="settings-switch"><span>Disable autoplay for embedded videos</span><input id="settings-no-autoplay" type="checkbox"></label>
+          <label class="settings-switch"><span>Increase contrast</span><input id="settings-high-contrast" type="checkbox"></label>
+          <label>Color-vision palette<select id="settings-color-vision"><option value="none">Default</option><option value="blue-orange">Blue and orange</option><option value="monochrome">Monochrome</option></select></label>
+          <p class="field-help">Video links open only when selected. The autoplay preference applies if embedded media is added.</p>
+        </details>
+      </div>
+      <div class="settings-footer"><p id="settings-message" class="message" role="status"></p><button class="button button-primary full-width" type="submit">Save settings</button></div>
+    </form>
+  </aside>
+</header>
+<button id="drawer-backdrop" class="drawer-backdrop" type="button" tabindex="-1" aria-hidden="true"></button>
+<main>
+<section id="auth-view" class="auth-layout">
+  <div class="intro"><p class="eyebrow">LEARN • PRACTISE • TRACK</p><h1>Your medical studies,<br><span>in one place.</span></h1>
+    <p>Practise with your study group, keep learning resources together and monitor your progress across five core courses.</p>
+    <div class="course-pills"><span>Biochemistry</span><span>Histology</span><span>Physiology</span><span>Embryology</span><span>Gross Anatomy</span></div></div>
+  <div class="auth-card"><div class="auth-tabs"><button class="tab active" id="show-login">Log in</button><button class="tab" id="show-signup">Create account</button></div>
+    <form id="auth-form"><h2 id="auth-title">Welcome back</h2>
+      <label id="name-label" class="hidden">Full name<input id="full-name" type="text" autocomplete="name"></label>
+      <label>Email address<input id="email" type="email" required autocomplete="email" placeholder="you@example.com"></label>
+      <label>Password<input id="password" type="password" required minlength="8" autocomplete="current-password" placeholder="At least 8 characters"></label>
+      <button class="button button-primary full-width" id="auth-submit" type="submit">Log in</button><p id="auth-message" class="message" role="status"></p>
+    </form>
+    <button id="forgot-password" class="text-button">Forgot your password?</button>
+    <form id="password-update-form" class="hidden"><h2>Choose a new password</h2>
+      <label>New password<input id="new-password" type="password" minlength="8" required autocomplete="new-password"></label>
+      <button class="button button-primary full-width" type="submit">Update password</button>
+      <p id="password-update-message" class="message" role="status"></p>
+    </form>
+    <p class="fine-print">Use an account created for this study hub. Do not reuse an important password. Admins can see your email, sign-ins, pages visited and active time; the site does not record what you type or your chat messages.</p>
+  </div>
+</section>
+
+<section id="app-view" class="hidden">
+<section id="page-home" class="page">
+  <div class="welcome-banner"><div><p class="eyebrow">METROS STUDY HUB</p><h1>Study smarter, together.</h1><p>Choose a course, practise with a quiz, then review your progress.</p></div><div class="banner-mark">M+</div></div>
+  <section class="home-profile panel" aria-label="Your study profile">
+    <div><p class="eyebrow">YOUR STUDY PROFILE</p><h2 id="home-display-name">Student</h2><p id="home-class-name">Class / year not set</p></div>
+    <div class="home-rank"><span>Leaderboard rank</span><strong id="home-leaderboard-rank">—</strong><small id="home-leaderboard-label">Overall verified scores</small></div>
+  </section>
+  <section class="panel study-planner" aria-labelledby="study-planner-heading">
+    <div class="study-planner-heading"><div><p class="eyebrow">YOUR NEXT STEPS</p><h2 id="study-planner-heading">Study task list</h2><p id="study-task-summary" class="muted">Plan a few focused tasks for your next study session.</p></div><button id="study-task-clear-completed" class="button button-outline hidden" type="button">Clear completed</button></div>
+    <form id="study-task-form" class="study-task-form">
+      <label for="study-task-title">Study task<input id="study-task-title" type="text" maxlength="120" required placeholder="e.g. Review upper limb anatomy"></label>
+      <label for="study-task-due-date">Due date <span class="muted">(optional)</span><input id="study-task-due-date" type="date"></label>
+      <button class="button button-primary" type="submit">Add task</button>
+    </form>
+    <p id="study-task-status" class="message" role="status" aria-live="polite"></p>
+    <ul id="study-task-list" class="study-task-list" aria-label="Your study tasks"></ul>
+  </section>
+  <section id="home-leaderboard" class="panel home-leaderboard"><div class="leaderboard-heading"><div><h2>Leaderboard leaders</h2><p class="muted">Top verified performers in your study group.</p></div><button class="button button-outline" type="button" data-go="progress">View all rankings</button></div><div id="home-leaderboard-content" class="home-leaderboard-list"><p class="muted loading-inline" aria-live="polite"><span class="refresh-spinner" aria-hidden="true"></span>Loading rankings…</p></div></section>
+  <h2 class="section-heading">Your courses</h2><div id="course-grid" class="course-grid"></div>
+  <div class="two-column"><article class="panel"><h3>Quick start</h3><p>Open a quiz or visit the resource library for notes, textbooks and selected video lessons.</p><button class="button button-primary" data-go="quizzes">Explore quizzes</button></article>
+  <article class="panel"><h3>Your learning record</h3><p>Your personal scores are private. Only verified scores from the Google Forms integration count toward official group rankings.</p><button class="button button-outline" data-go="progress">View progress</button></article></div>
+  <button id="chat-launch" class="chat-launch" type="button" aria-label="Open study-group chat" title="Study-group chat" aria-controls="group-chat-panel" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-5 4v-4.6a2.5 2.5 0 0 1-1-1.9z"></path></svg></button>
+  <section id="group-chat-panel" class="group-chat-panel hidden" role="dialog" aria-label="Study-group chat">
+    <header class="group-chat-header"><div><h2>Study-group chat</h2><p>Messages and voice notes expire after 7 days.</p><p id="chat-online-summary" class="chat-online-summary" aria-live="polite">Checking who's online…</p></div><button id="chat-close" class="icon-button" type="button" aria-label="Close chat">×</button></header>
+    <div id="chat-online-list" class="chat-online-list" aria-label="Members currently in chat"></div>
+    <p id="chat-typing-indicator" class="chat-typing-indicator" aria-live="polite"></p>
+    <div id="chat-message-list" class="chat-message-list" aria-live="polite"><p class="muted">Open the chat to load messages.</p></div>
+    <form id="chat-message-form" class="chat-message-form">
+      <label class="sr-only" for="chat-message-input">Write a group message</label>
+      <textarea id="chat-message-input" rows="2" maxlength="1000" required placeholder="Write a message…"></textarea>
+      <div class="chat-compose-actions"><button id="chat-record-voice" class="button button-light" type="button">Record voice</button><button id="chat-stop-voice" class="button button-light hidden" type="button">Stop recording</button><button id="chat-send-voice" class="button button-primary hidden" type="button">Send voice</button><button id="chat-discard-voice" class="button button-outline hidden" type="button">Discard</button><button id="chat-send" class="button button-primary" type="submit">Send</button></div>
+    </form>
+    <audio id="chat-voice-preview" class="chat-voice-preview hidden" controls></audio>
+    <p id="chat-message-status" class="message chat-message-status" role="status" aria-live="polite"></p>
+  </section>
+</section>
+
+<section id="page-classes" class="page hidden">
+  <div class="page-heading"><div><p class="eyebrow">YOUR WEEK, AT A GLANCE</p><h1>Classes &amp; exams</h1><p>See today's lectures, class times and upcoming exam countdowns.</p></div></div>
+  <section id="student-timetable-panel" class="panel timetable-panel"><div class="leaderboard-heading"><div><h2>Lecture timetable</h2><p id="timetable-date" class="muted"></p></div>
+      <div id="class-notification-controls" class="class-notification-controls"><button id="enable-class-phone-notifications" class="button button-outline" type="button">Enable phone class alerts</button><p id="class-notification-status" class="field-help" role="status"></p></div>
+    </div>
+    <div id="timetable-day-tabs" class="day-tabs" role="tablist" aria-label="Weekday timetable"></div>
+    <div id="class-timetable" class="class-timetable" aria-live="polite"></div>
+  </section>
+  <section id="student-exam-panel" class="panel exam-panel"><div class="leaderboard-heading"><div><h2>Upcoming MB exams</h2><p>Exam dates and countdowns set by your administrator.</p></div></div>
+    <div id="exam-list" class="exam-list" aria-live="polite"></div>
+  </section>
+</section>
+
+<section id="page-quizzes" class="page hidden"><div class="page-heading"><div><p class="eyebrow">TEST YOUR KNOWLEDGE</p><h1>Quiz centre</h1><p>Choose a course and open its Google Form quiz.</p></div></div>
+  <div class="filter-row"><label>Course<select id="quiz-course-filter"><option value="all">All courses</option></select></label></div><div id="quiz-list" class="card-grid"></div>
+</section>
+
+<section id="page-progress" class="page hidden">
+  <div class="page-heading"><div><p class="eyebrow">KEEP MOVING FORWARD</p><h1>Results &amp; progress</h1><p>Review your personal results and compare verified group performance.</p></div><div class="progress-heading-tools"><div id="streak-chip" class="streak-chip" aria-label="Current study streak"><span aria-hidden="true">🔥</span><strong id="streak-chip-count">0</strong><small>day streak</small></div><button class="button button-outline" id="refresh-leaderboard" type="button" aria-live="polite">Refresh ↻</button></div></div>
+  <div class="notice">Scores you enter manually are marked unverified and remain in your private record. Official leaderboards use verified Google Forms scores only.</div>
+  <section id="streak-progress" class="panel streak-progress-panel" aria-labelledby="streak-progress-heading">
+    <div class="streak-progress-heading"><div><p class="eyebrow">YOUR STUDY HABIT</p><h2 id="streak-progress-heading">Daily study streak</h2><p id="streak-summary">Your consecutive days of returning to MedStudy Hub.</p></div><span class="streak-flame" aria-hidden="true">🔥</span></div>
+    <div class="streak-progress-stats"><div><strong id="streak-current-count">0</strong><span>Current streak</span></div><div><strong id="streak-best-count">0</strong><span>Longest streak</span></div><div><strong id="streak-last-date">—</strong><span>Last visit</span></div></div>
+    <div class="streak-progress-track" role="progressbar" aria-label="Progress to a seven-day study streak" aria-valuemin="0" aria-valuemax="7" aria-valuenow="0"><span id="streak-progress-fill"></span></div>
+    <p id="streak-sync-status" class="field-help" role="status"></p>
+  </section>
+  <div id="score-entry-panel" class="panel"><h2>Record a practice score</h2><p class="muted">Use this for personal tracking when a quiz is not connected to automatic score import.</p>
+    <form id="score-form" class="score-form"><label>Course<select id="score-course" required></select></label><label>Quiz title<input id="score-title" required maxlength="140" placeholder="e.g. Cell Biology Test 1"></label>
+    <label>Score earned<input id="score-earned" type="number" min="0" step="0.01" required></label><label>Total marks<input id="score-total" type="number" min="0.01" step="0.01" required></label><button class="button button-primary" type="submit">Save private score</button></form><p id="score-message" class="message" role="status"></p>
+  </div>
+  <div id="stats-grid" class="stats-grid"></div>
+  <div class="panel"><h2>My performance by course</h2><canvas id="performance-chart" height="120" aria-label="Performance chart"></canvas></div>
+  <div class="panel"><h2>My achievements</h2><div id="achievement-list" class="achievement-grid"></div></div>
+  <div class="panel"><h2>My recent results</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Course</th><th>Quiz</th><th>Score</th><th>Status</th></tr></thead><tbody id="results-body"></tbody></table></div></div>
+  <div id="leaderboard-panel" class="panel"><div class="leaderboard-heading"><div><h2>Study-group leaderboard</h2><p class="muted">Students must opt in. At least three verified attempts are required for ranking.</p></div></div>
+    <div class="leaderboard-tabs"><button class="leaderboard-tab active" data-board="overall">Overall</button><button class="leaderboard-tab" data-board="courses">By course</button><button class="leaderboard-tab" data-board="weekly">This week</button><button class="leaderboard-tab" data-board="improved">Most improved</button><button class="leaderboard-tab" data-board="activity">Recent activity</button></div>
+    <div id="leaderboard-content"><p class="muted loading-inline" aria-live="polite"><span class="refresh-spinner" aria-hidden="true"></span>Loading rankings…</p></div><div id="student-detail" class="student-detail hidden"></div>
+  </div>
+</section>
+
+<section id="page-resources" class="page hidden"><div class="page-heading"><div><p class="eyebrow">YOUR STUDY LIBRARY</p><h1>Notes, textbooks &amp; videos</h1><p>Find course materials collected in one library.</p></div></div>
+  <section class="panel drive-search-panel" aria-labelledby="drive-search-heading">
+    <div class="drive-search-heading"><div><p class="eyebrow">GOOGLE DRIVE</p><h2 id="drive-search-heading">Search shared documents</h2><p>Search files in the configured public Drive folder and preview them here.</p></div></div>
+    <p id="drive-search-error" class="drive-search-error hidden" role="alert"></p>
+    <button id="drive-search-retry" class="button button-outline hidden" type="button">Retry loading documents</button>
+    <label for="drive-document-search">Search by file name<input id="drive-document-search" type="search" placeholder="Start typing a document name…" autocomplete="off"></label>
+    <p id="drive-search-status" class="field-help" role="status" aria-live="polite">Documents load when this page opens.</p>
+    <div id="drive-search-results" class="drive-search-results" aria-live="polite"></div>
+    <section id="drive-viewer" class="drive-viewer hidden" aria-label="Document preview">
+      <header class="drive-viewer-header"><h3 id="drive-preview-title">Document preview</h3><div class="drive-viewer-actions">
+        <a id="drive-download-link" class="button button-primary" target="_blank" rel="noopener noreferrer">Download</a>
+        <button id="drive-preview-close" class="button button-outline" type="button">Close preview</button>
+      </div></header>
+      <iframe id="drive-preview-frame" title="Google Drive document preview" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe>
+    </section>
+  </section>
+  <div class="filter-row"><label>Course<select id="resource-course-filter"><option value="all">All courses</option></select></label><label>Type<select id="resource-type-filter"><option value="all">All types</option><option value="note">Notes</option><option value="textbook">Textbooks</option><option value="video">Videos</option><option value="other">Other</option></select></label></div><div id="resource-list" class="resource-course-list"></div>
+  <p class="fine-print">Only share materials you own or have permission to distribute. For copyrighted textbooks, link to authorised sources.</p>
+</section>
+
+<section id="page-profile" class="page hidden"><div class="page-heading"><div><p class="eyebrow">ACCOUNT SETTINGS</p><h1>My profile</h1><p>Choose how you appear in the study group and customize your website colour.</p></div></div>
+  <div class="panel profile-panel"><form id="profile-form" class="profile-form">
+    <div class="profile-section-heading"><h2>Personal details</h2><p>Add a few details to personalize your study profile.</p></div>
+    <div class="profile-fields">
+      <label>Display name<input id="display-name" required maxlength="40" autocomplete="nickname" placeholder="How classmates know you"></label>
+      <label>Class / year<input id="class-name" maxlength="60" placeholder="e.g. Year 2"></label>
+      <label>Favourite subject<select id="favorite-subject"></select></label>
+      <label>Quiz rank (optional)<input id="quiz-rank" maxlength="30" placeholder="e.g. 1st place, Top 10"><span class="field-help">A personal note only; it does not affect verified group rankings.</span></label>
+    </div>
+    <div class="profile-preferences">
+      <div><h3>Website appearance</h3><p>Choose an accent colour just for your account.</p></div>
+      <div class="theme-color-row">
+        <label>Accent colour<input id="theme-color" type="color" value="#087f8c" aria-describedby="theme-color-help"></label>
+        <div><button class="button button-outline" id="reset-theme-color" type="button">Use default colour</button><p id="theme-color-help" class="muted">Your choice is saved to your profile.</p></div>
+      </div>
+    </div>
+    <label class="check-label"><input id="leaderboard-opt-in" type="checkbox"> Show my display name and verified academic statistics on the group leaderboard</label>
+    <div class="profile-actions"><button class="button button-primary" type="submit">Save profile</button></div>
+  </form><p id="profile-message" class="message" role="status"></p>
+  </div>
+  <div class="panel"><h2>Account security</h2><p>We can send a password-reset link to your registered email address.</p><button class="button button-outline" id="profile-reset-password">Send password reset email</button><p id="security-message" class="message" role="status"></p></div>
+  <div class="panel danger-panel"><h2>Delete my account</h2><p>Deleting your account permanently removes your profile and quiz history. This action cannot be undone.</p><button class="button button-danger" id="delete-account">Permanently delete my account</button></div>
+</section>
+
+<section id="page-admin" class="page hidden"><div class="page-heading"><div><p class="eyebrow">SITE MANAGEMENT</p><h1>Admin dashboard</h1><p>Use the sections below to manage schedules, study content, announcements and site features.</p></div></div>
+  <div class="notice">Admin access is controlled by Supabase. Only accounts explicitly added to the admin_users table can manage content.</div>
+  <details class="admin-section" open><summary>Overview</summary><div id="admin-stats" class="stats-grid"></div></details>
+  <details class="admin-section" open><summary>Users and website activity</summary>
+    <p class="muted">Invite people by email, review account status, or inspect recent sign-ins, page visits and active time. Activity logging does not collect typed content or chat messages.</p>
+    <div class="panel danger-panel admin-reset-panel"><h3>Reset study data for everyone</h3><p>This permanently clears all users' web activity, active-time totals, study streaks and quiz results. Accounts, profiles and course content remain. Users' saved active-time totals on other devices clear the next time their profile syncs.</p><button class="button button-danger" id="admin-reset-all-study-data" type="button">Reset all users' study data</button><p id="admin-reset-data-message" class="message" role="status"></p></div>
+    <form id="admin-invite-user-form" class="admin-user-invite">
+      <label>Email address<input id="admin-invite-email" type="email" autocomplete="email" maxlength="254" required placeholder="student@example.com"></label>
+      <label>Display name (optional)<input id="admin-invite-name" type="text" maxlength="80" placeholder="Student name"></label>
+      <button class="button button-primary" id="admin-invite-submit" type="submit">Invite user by email</button>
+    </form>
+    <p id="admin-user-message" class="message" role="status"></p>
+    <p id="admin-user-count" class="muted" role="status"></p>
+    <div class="admin-user-toolbar">
+      <label>Search users<input id="admin-user-search" type="search" placeholder="Name or email"></label>
+      <button class="button button-outline" id="admin-users-refresh" type="button">Refresh users ↻</button>
+    </div>
+    <div id="admin-user-list" class="admin-user-list" aria-live="polite"><p class="muted">User accounts have not been loaded yet.</p></div>
+    <button class="button button-outline hidden" id="admin-users-load-more" type="button">Load more users</button>
+    <section id="admin-user-activity" class="admin-user-activity hidden" aria-live="polite">
+      <div class="leaderboard-heading"><div><h3 id="admin-user-activity-heading">Recent activity</h3><p class="muted">Up to 100 recent events and daily active-time totals for the last 30 days. Time is approximate.</p></div><button class="button button-light" id="admin-user-activity-close" type="button">Close</button></div>
+      <div id="admin-user-activity-content"></div>
+    </section>
+  </details>
+  <details class="admin-section" open><summary>Class and exam timetables</summary>
+    <div class="admin-schedule-grid">
+      <section class="panel admin-schedule-panel"><h2>Set up class timetable</h2><p>Add or edit a weekday lecture; students see the course, lecturer, and start/end status in Classes / exams.</p>
+        <form id="admin-class-form" class="admin-schedule-form">
+          <input id="admin-class-id" type="hidden">
+          <label>Course<select id="admin-class-course" required></select></label>
+          <label>Day<select id="admin-class-day" required><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option></select></label>
+          <label>Lecture title<input id="admin-class-title" maxlength="140" required placeholder="e.g. Cardiovascular physiology"></label>
+          <label>Lecturer<input id="admin-class-lecturer" maxlength="100" required></label>
+          <label>Start time<input id="admin-class-start" type="time" required></label>
+          <label>End time<input id="admin-class-end" type="time" required></label>
+          <div class="button-row"><button class="button button-primary" type="submit">Save class</button><button class="button button-light" id="admin-class-cancel" type="button">Clear</button></div>
+        </form><p id="admin-class-message" class="message" role="status"></p><div id="admin-class-list" class="admin-list"></div>
+      </section>
+      <section class="panel admin-schedule-panel"><h2>Set up MB exam periods</h2><p>Add the exam name, course, type, and start/end date and time.</p>
+        <form id="admin-exam-form" class="admin-schedule-form">
+          <input id="admin-exam-id" type="hidden">
+          <label>Course<select id="admin-exam-course" required></select></label>
+          <label>Exam name<input id="admin-exam-name" maxlength="140" required></label>
+          <label>Exam type<select id="admin-exam-type" required><option value="Viva">Viva</option><option value="MCQ">MCQ</option><option value="Theory">Theory</option></select></label>
+          <label>Starts<input id="admin-exam-start" type="datetime-local" required></label>
+          <label>Ends<input id="admin-exam-end" type="datetime-local" required></label>
+          <div class="button-row"><button class="button button-primary" type="submit">Save exam</button><button class="button button-light" id="admin-exam-cancel" type="button">Clear</button></div>
+        </form><p id="admin-exam-message" class="message" role="status"></p><div id="admin-exam-list" class="admin-list"></div>
+      </section>
+    </div>
+  </details>
+  <details class="admin-section" open><summary>Quizzes and study resources</summary>
+    <div class="admin-grid">
+      <form id="admin-quiz-form" class="panel"><h2 id="admin-quiz-heading">Add a quiz</h2><input id="admin-quiz-id" type="hidden">
+        <label>Course<select id="admin-quiz-course" required></select></label><label>Quiz title<input id="admin-quiz-title" required maxlength="140"></label>
+        <label>Description<textarea id="admin-quiz-description" rows="3" maxlength="500"></textarea></label>
+        <label>Difficulty<select id="admin-quiz-difficulty"><option>Practice</option><option>Easy</option><option>Moderate</option><option>Difficult</option><option>Exam level</option></select></label>
+        <label>Google Forms responder URL<input id="admin-quiz-url" type="url" required placeholder="https://docs.google.com/forms/..."></label>
+        <label>Google Form ID (for verified score import)<input id="admin-quiz-form-id" type="text" placeholder="Form ID from the form URL"></label>
+        <label class="check-label"><input id="admin-quiz-published" type="checkbox"> Publish immediately</label>
+        <div class="button-row"><button class="button button-primary" type="submit">Save quiz</button><button class="button button-light" type="button" id="admin-quiz-cancel">Clear</button></div><p id="admin-quiz-message" class="message" role="status"></p>
+      </form>
+      <form id="admin-resource-form" class="panel"><h2 id="admin-resource-heading">Add a resource</h2><input id="admin-resource-id" type="hidden">
+        <label>Course<select id="admin-resource-course" required></select></label><label>Resource title<input id="admin-resource-title" required maxlength="140"></label>
+        <label>Description<textarea id="admin-resource-description" rows="3" maxlength="500"></textarea></label>
+        <label>Resource type<select id="admin-resource-type"><option value="note">Notes</option><option value="textbook">Textbook / reference</option><option value="video">Video link</option><option value="other">Other</option></select></label>
+        <label>Resource URL (for web pages or videos)<input id="admin-resource-url" type="url" placeholder="https://..."></label>
+        <label>Google Drive textbook link<input id="admin-resource-drive-url" type="url" placeholder="https://drive.google.com/..."><span class="field-help">For textbooks, paste a Google Drive sharing link and make sure the intended users have access.</span></label>
+        <label>Or upload a document<input id="admin-resource-file" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.rtf"><span id="admin-resource-file-help" class="field-help">PDF, Word, PowerPoint or text documents up to 50 MB. Videos should be added as links.</span></label>
+        <label class="check-label"><input id="admin-resource-published" type="checkbox"> Publish immediately</label>
+        <div class="button-row"><button class="button button-primary" type="submit">Save resource</button><button class="button button-light" type="button" id="admin-resource-cancel">Clear</button></div><p id="admin-resource-message" class="message" role="status"></p>
+      </form>
+    </div>
+    <form id="admin-quiz-bulk-form" class="panel bulk-quiz-panel">
+      <h2>Create quizzes for multiple courses</h2><p>Select the courses to include and enter a separate quiz title and form link for each one.</p>
+      <div class="bulk-quiz-settings"><label>Difficulty<select id="bulk-quiz-difficulty"><option>Practice</option><option>Easy</option><option>Moderate</option><option>Difficult</option><option>Exam level</option></select></label>
+        <label class="check-label"><input id="bulk-quiz-published" type="checkbox"> Publish all quizzes immediately</label></div>
+      <div id="bulk-quiz-grid" class="bulk-quiz-grid"></div>
+      <button class="button button-primary" type="submit">Create selected quizzes</button><p id="bulk-quiz-message" class="message" role="status"></p>
+    </form>
+    <div class="admin-manage-grid">
+      <div class="panel admin-list-panel"><div class="leaderboard-heading"><div><h2>Manage quizzes</h2><p class="muted">Edit, publish/unpublish or delete quiz links.</p></div><button class="button button-outline" id="admin-refresh">Refresh lists ↻</button></div><div id="admin-quiz-list" class="admin-list"></div></div>
+      <div class="panel admin-list-panel"><h2>Manage resources</h2><p class="muted">Edit, publish/unpublish or delete learning resources.</p><div id="admin-resource-list" class="admin-list"></div></div>
+    </div>
+  </details>
+  <details class="admin-section"><summary>Group announcements</summary>
+    <section class="panel admin-notifications-panel" aria-labelledby="admin-notifications-heading">
+      <div class="leaderboard-heading"><div><h2 id="admin-notifications-heading">Send a group announcement</h2><p class="muted">Share reading reminders, test dates or other updates. Announcements disappear from the centre after 14 days.</p></div><div class="button-row"><button class="button button-outline" id="admin-notifications-refresh" type="button">Refresh</button><button class="button button-danger" id="admin-notifications-clear" type="button">Clear notification centres</button></div></div>
+      <p class="field-help">Clearing removes shared announcements and users' saved class/exam reminders when their notification centre next syncs.</p>
+      <p id="admin-notification-reset-message" class="message" role="status"></p>
+      <form id="admin-notification-form">
+        <label>Announcement title<input id="admin-notification-title" type="text" maxlength="120" required placeholder="e.g. Physiology test on Friday"></label>
+        <label>Message for everyone<textarea id="admin-notification-body" rows="3" maxlength="1200" required placeholder="Share what to read, when to meet, or what students should know."></textarea></label>
+        <p class="field-help">Visible to all signed-in users for 14 days. This is an in-app announcement, not a push notification or email.</p>
+        <button class="button button-primary" type="submit">Send announcement</button><p id="admin-notification-message" class="message" role="status"></p>
+      </form>
+      <h3 class="admin-notification-list-heading">Current announcements</h3><div id="admin-notification-list" class="admin-notification-list"></div>
+    </section>
+  </details>
+  <details class="admin-section"><summary>Activity and notification controls</summary>
+    <p class="muted">Turn study features on or off for students. Class phone notifications also require each student to enable alerts on their device.</p>
+    <div id="admin-feature-settings" class="admin-feature-settings"></div><p id="admin-feature-settings-message" class="message" role="status"></p>
+  </details>
+</section>
+</section>
+</main>
+<footer>METROS Study Hub <span>•</span> Built for collaborative learning</footer>
+<div id="streak-modal" class="streak-modal" aria-hidden="true">
+  <section class="streak-dialog" role="dialog" aria-modal="true" aria-labelledby="streak-modal-title" aria-describedby="streak-modal-description">
+    <button id="streak-modal-close" class="icon-button streak-modal-close" type="button" aria-label="Close streak celebration">×</button>
+    <span class="streak-modal-fire" aria-hidden="true">🔥</span><p class="eyebrow">DAILY STUDY STREAK</p>
+    <h2 id="streak-modal-title">Welcome back!</h2><p id="streak-modal-description">You're building a great study habit.</p>
+    <div class="streak-modal-count"><strong id="streak-modal-count">0</strong><span>day streak</span></div>
+    <p id="streak-modal-status" class="field-help" role="status"></p>
+    <button id="streak-modal-done" class="button button-primary full-width" type="button">Continue studying</button>
+  </section>
+</div>
+<div id="live-notice-region" class="live-notice-region" aria-live="polite" aria-atomic="true"></div>
+</body></html>

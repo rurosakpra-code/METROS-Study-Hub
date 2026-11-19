@@ -1,0 +1,11 @@
+[functions.import-google-form-score]
+verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = true
+
+[functions.admin-user-management]
+verify_jwt = true
+
+[functions.cleanup-group-chat-audio]
+verify_jwt = false
