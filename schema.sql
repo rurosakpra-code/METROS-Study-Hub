@@ -699,7 +699,9 @@ begin
   'student_count',(select count(*) from public.profiles),
   'quiz_count',(select count(*) from public.quizzes),
   'resource_count',(select count(*) from public.resources),
-  'attempt_count',(select count(*) from public.quiz_attempts));
+  'attempt_count',(select count(*) from public.quiz_attempts),
+  'group_average',(select round(avg(score/total_marks*100),2)
+    from public.quiz_attempts where is_verified=true));
 end; $$;
 grant execute on function public.get_admin_summary() to authenticated;
 

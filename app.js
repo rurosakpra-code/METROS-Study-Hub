@@ -2,7 +2,7 @@
 const SUPABASE_URL = "https://qiwqluwtmpflmekgjiob.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SA2ullhPQI-ftOEUfBqcvQ_oRendrnb";
 // Public read-only Google Drive folder configuration. Restrict the API key by HTTP referrer and Drive API.
-const GOOGLE_DRIVE_API_KEY = "AIzaSyD53iYS0MZgzcQBBXHXVXEISqytGHin0Sk";
+const GOOGLE_DRIVE_API_KEY = "YOUR_GOOGLE_DRIVE_API_KEY";
 const GOOGLE_DRIVE_FOLDER_ID = "YOUR_GOOGLE_DRIVE_FOLDER_ID";
 const configured = !SUPABASE_URL.startsWith("YOUR_") && !SUPABASE_ANON_KEY.startsWith("YOUR_");
 const db = configured && window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY,{global:{fetch:networkAwareFetch}}) : null;
@@ -1555,7 +1555,7 @@ $("score-form").addEventListener("submit",async e=>{
   $("score-form").reset();message("score-message","Saved to your private record. This manually entered score is not included in official rankings.");await loadAttempts();
 });
 async function loadAttempts(){
-  if(!currentUser)return;const {data,error}=await db.from("quiz_attempts").select("*").order("created_at",{ascending:false});
+  if(!currentUser)return;const {data,error}=await db.from("quiz_attempts").select("*").eq("user_id",currentUser.id).order("created_at",{ascending:false});
   if(error){console.error(error);return}attempts=data||[];renderPersonalStats();
 }
 function renderPersonalStats(){
@@ -1954,7 +1954,9 @@ async function loadAdmin(){
   if(!isAdmin)return;
   const {data,error}=await db.rpc("get_admin_summary");
   if(error){$("admin-stats").textContent="Could not load admin statistics: "+error.message;return}
-  $("admin-stats").innerHTML=`<div class="stat"><strong>${data.quiz_count}</strong><span>Quizzes</span></div><div class="stat"><strong>${data.resource_count}</strong><span>Resources</span></div><div class="stat"><strong>${data.attempt_count}</strong><span>Recorded attempts</span></div><div class="stat"><strong>${data.student_count}</strong><span>Registered students</span></div>`;
+  if(!("group_average" in data)){$("admin-stats").textContent="Could not load the group average. Run the latest schema.sql in the Supabase SQL Editor.";return}
+  const groupAverage=data.group_average==null?"—":`${Number(data.group_average).toFixed(1)}%`;
+  $("admin-stats").innerHTML=`<div class="stat"><strong>${data.quiz_count}</strong><span>Quizzes</span></div><div class="stat"><strong>${data.resource_count}</strong><span>Resources</span></div><div class="stat"><strong>${data.attempt_count}</strong><span>Recorded attempts</span></div><div class="stat"><strong>${data.student_count}</strong><span>Registered students</span></div><div class="stat"><strong>${groupAverage}</strong><span>Verified group average</span></div>`;
   await Promise.all([loadAdminLists(),loadAdminSchedules(),loadAdminUsers()]);
 }
 async function loadAdminLists(){

@@ -75,7 +75,7 @@ The Google Apps Script sends scored form submissions to a Supabase Edge Function
 6. Open the supplied `schema.sql`, copy the entire file, paste it into the SQL Editor and click **Run**.
 7. Confirm that the query completes without an error.
 
-If you previously used an earlier MedStudy Hub database, back it up first, then run this updated `schema.sql` in the SQL Editor. It adds profile settings and activity-reset markers, the user study-streak table/functions, user/admin study-data reset functions, the notification-centre reset marker/function, resource storage path, private document bucket, admin-controlled notifications, class timetable, MB exam, feature settings, group-chat presence/audio storage and user-activity tables, plus weekly chat cleanup, while keeping existing quiz/resource/attempt rows. Review any custom policies you previously created.
+If you previously used an earlier MedStudy Hub database, back it up first, then run this updated `schema.sql` in the SQL Editor. It adds profile settings and activity-reset markers, the user study-streak table/functions, user/admin study-data reset functions, the notification-centre reset marker/function, resource storage path, private document bucket, admin-controlled notifications, class timetable, MB exam, feature settings, group-chat presence/audio storage and user-activity tables, plus weekly chat cleanup and a verified-score group average in the admin overview, while keeping existing quiz/resource/attempt rows. Review any custom policies you previously created.
 
 ## Part 2 — Configure the website
 
