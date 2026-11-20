@@ -34,7 +34,7 @@ This is the main MedStudy Hub website. It contains the student experience and th
 - A Monday–Friday class timetable with lecturer and live class status.
 - Admin-managed MB exam periods with Viva, MCQ or Theory type and countdown reminders.
 - Class start/end and 30-day, 7-day and 1-day exam reminders in the in-app notification centre.
-- Home dashboard profile card and medal-ranked top-three leaderboard.
+- Home dashboard profile card and full medal-ranked leaderboard for opted-in students after three students qualify.
 - Active website time in Results & Progress (stored per account on the current device).
 - Installable Progressive Web App (PWA) with a cached app shell.
 - Resume the last visited section for up to 30 minutes.
@@ -75,7 +75,7 @@ The Google Apps Script sends scored form submissions to a Supabase Edge Function
 6. Open the supplied `schema.sql`, copy the entire file, paste it into the SQL Editor and click **Run**.
 7. Confirm that the query completes without an error.
 
-If you previously used an earlier MedStudy Hub database, back it up first, then run this updated `schema.sql` in the SQL Editor. It adds profile settings and activity-reset markers, the user study-streak table/functions, user/admin study-data reset functions, the notification-centre reset marker/function, resource storage path, private document bucket, admin-controlled notifications, class timetable, MB exam, feature settings, group-chat presence/audio storage and user-activity tables, plus weekly chat cleanup and a verified-score group average in the admin overview, while keeping existing quiz/resource/attempt rows. Review any custom policies you previously created.
+If you previously used an earlier MedStudy Hub database, back it up first, then run this updated `schema.sql` in the SQL Editor. It adds profile settings and activity-reset markers, the user study-streak table/functions, user/admin study-data reset functions, the notification-centre reset marker/function, resource storage path, private document bucket, admin-controlled notifications, class timetable, MB exam, feature settings, group-chat presence/audio storage and user-activity tables, plus weekly chat cleanup and a verified-score group average in the admin overview, while keeping existing quiz/resource/attempt rows. Review any custom policies you previously created. To update an existing database's leaderboard rules only, run `supabase/fix_leaderboard_eligibility.sql` in the SQL Editor.
 
 ## Part 2 — Configure the website
 
@@ -318,7 +318,7 @@ You can use a static hosting provider such as Netlify, Vercel or Cloudflare Page
 - **Google score import returns 401:** Check that the Apps Script secret exactly matches `MEDSTUDY_SHARED_SECRET`.
 - **Google score import returns 404:** The respondent email does not match a MedStudy Auth account.
 - **Google score import says no points:** Make the Form a quiz and assign points to its questions.
-- **No leaderboard entries:** Students must opt in and have at least three verified quiz attempts.
+- **No leaderboard entries:** At least three opted-in students must have a verified quiz attempt. Once that threshold is reached, every opted-in student with one or more verified attempts appears in Overall and By course. Weekly rankings use the same threshold within the last seven days. For an existing database, run `supabase/fix_leaderboard_eligibility.sql` in the Supabase SQL Editor, then refresh the website.
 - **User management says “Failed to send a request to the Edge Function”:** Confirm the latest `schema.sql` has run, then deploy `admin-user-management` to the same Supabase project as the website: `supabase functions deploy admin-user-management --project-ref qiwqluwtmpflmekgjiob`. Check Supabase Dashboard → Edge Functions to confirm it is deployed, and verify your account is in `admin_users`.
 - **Function deployment errors:** Update/install the Supabase CLI, run `supabase login`, link the project, then retry the deploy command.
 

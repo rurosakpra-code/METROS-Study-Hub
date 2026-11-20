@@ -2,7 +2,7 @@
 const SUPABASE_URL = "https://qiwqluwtmpflmekgjiob.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SA2ullhPQI-ftOEUfBqcvQ_oRendrnb";
 // Public read-only Google Drive folder configuration. Restrict the API key by HTTP referrer and Drive API.
-const GOOGLE_DRIVE_API_KEY = "AIzaSyD53iYS0MZgzcQBBXHXVXEISqytGHi";
+const GOOGLE_DRIVE_API_KEY = "AIzaSyD53iYS0MZgzcQBBXHXVXEISqytGHin0Sk";
 const GOOGLE_DRIVE_FOLDER_ID = "1n6gS6uo_G2SW3Uenhg9FpXieha74HPcA";
 const configured = !SUPABASE_URL.startsWith("YOUR_") && !SUPABASE_ANON_KEY.startsWith("YOUR_");
 const db = configured && window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY,{global:{fetch:networkAwareFetch}}) : null;
@@ -1387,8 +1387,8 @@ async function renderHomeLeaderboard(){
     const rows=(await getView("overall_leaderboard")).sort((a,b)=>b.average_percentage-a.average_percentage);
     const rank=rows.findIndex(row=>row.user_id===currentUser.id);
     $("home-leaderboard-rank").innerHTML=rank>=0?`${medal(rank+1)} <span>${rank+1}</span>`:"—";
-    $("home-leaderboard-label").textContent=rank>=0?"Your overall rank":"Opt in and record 3 verified scores to rank";
-    box.innerHTML=rows.length?rows.slice(0,3).map((row,index)=>`<div class="home-leader-row"><span class="medal">${medal(index+1)}</span><strong>${esc(row.display_name)}${row.user_id===currentUser.id?" (you)":""}</strong><span>${Number(row.average_percentage).toFixed(1)}%</span></div>`).join(""):'<p class="muted">No ranked students yet. Opt in from My profile and add verified scores to appear.</p>';
+    $("home-leaderboard-label").textContent=rank>=0?"Your overall rank":$("leaderboard-opt-in").checked?"Waiting for 3 students with verified scores":"Opt in; ranking starts after 3 students qualify";
+    box.innerHTML=rows.length?rows.map((row,index)=>`<div class="home-leader-row"><span class="medal">${medal(index+1)}</span><strong>${esc(row.display_name)}${row.user_id===currentUser.id?" (you)":""}</strong><span>${Number(row.average_percentage).toFixed(1)}%</span></div>`).join(""):'<p class="muted">No rankings yet. At least three opted-in students need a verified score before rankings appear.</p>';
   }catch(error){box.innerHTML=`<p class="muted">Could not load leaderboard: ${esc(error.message)}</p>`}
   finally{box.removeAttribute("aria-busy")}
 }
@@ -1798,7 +1798,7 @@ async function refreshLeaderboard(){
 $("refresh-leaderboard").onclick=refreshLeaderboard;
 async function getView(view){const {data,error}=await db.from(view).select("*");if(error)throw error;return data||[]}
 function rankingTable(rows,scoreKey="average_percentage"){
-  if(!rows.length)return '<p class="muted">No eligible opted-in students yet. Verified attempts are required for official rankings.</p>';
+  if(!rows.length)return '<p class="muted">No rankings yet. At least three opted-in students need a verified score before rankings appear.</p>';
   return `<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Student</th><th>Average / change</th><th>Quizzes</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td><span class="rank-medal" aria-label="Rank ${i+1}">${medal(i+1)}</span></td><td>${esc(r.display_name)}${r.user_id===currentUser.id?' <b>(you)</b>':""}</td><td>${Number(r[scoreKey]||0).toFixed(1)}%</td><td>${r.quiz_count??r.current_quiz_count??"—"}</td></tr>`).join("")}</tbody></table></div>`;
 }
 async function renderLeaderboard(){
