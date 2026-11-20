@@ -1386,13 +1386,19 @@ async function renderHomeLeaderboard(){
   try{
     const rows=(await getView("overall_leaderboard")).sort((a,b)=>b.average_percentage-a.average_percentage);
     const rank=rows.findIndex(row=>row.user_id===currentUser.id);
-    $("home-leaderboard-rank").innerHTML=rank>=0?`${medal(rank+1)} <span>${rank+1}</span>`:"—";
+    $("home-leaderboard-rank").innerHTML=rank>=0?rank<3?`${medal(rank+1)} <span>${rank+1}</span>`:`<span class="ordinal-rank">${medal(rank+1)}</span>`:"—";
     $("home-leaderboard-label").textContent=rank>=0?"Your overall rank":$("leaderboard-opt-in").checked?"Waiting for 3 students with verified scores":"Opt in; ranking starts after 3 students qualify";
-    box.innerHTML=rows.length?rows.map((row,index)=>`<div class="home-leader-row"><span class="medal">${medal(index+1)}</span><strong>${esc(row.display_name)}${row.user_id===currentUser.id?" (you)":""}</strong><span>${Number(row.average_percentage).toFixed(1)}%</span></div>`).join(""):'<p class="muted">No rankings yet. At least three opted-in students need a verified score before rankings appear.</p>';
+    box.innerHTML=rows.length?rows.map((row,index)=>`<div class="home-leader-row"><span class="medal${index>=3?" ordinal-rank":""}">${medal(index+1)}</span><strong>${esc(row.display_name)}${row.user_id===currentUser.id?" (you)":""}</strong><span>${Number(row.average_percentage).toFixed(1)}%</span></div>`).join(""):'<p class="muted">No rankings yet. At least three opted-in students need a verified score before rankings appear.</p>';
   }catch(error){box.innerHTML=`<p class="muted">Could not load leaderboard: ${esc(error.message)}</p>`}
   finally{box.removeAttribute("aria-busy")}
 }
-function medal(rank){return rank===1?"🥇":rank===2?"🥈":rank===3?"🥉":String(rank)}
+function medal(rank){
+  if(rank===1)return "🥇";
+  if(rank===2)return "🥈";
+  if(rank===3)return "🥉";
+  const suffix=rank%100>=11&&rank%100<=13?"th":rank%10===1?"st":rank%10===2?"nd":rank%10===3?"rd":"th";
+  return `${rank}${suffix}`;
+}
 function renderQuizzes(){
   const c=$("quiz-course-filter").value||"all",rows=quizzes.filter(q=>c==="all"||q.course===c);
   $("quiz-list").innerHTML=rows.length?rows.map(q=>`<article class="content-card"><span class="tag">${esc(q.course)} • ${esc(q.difficulty||"Practice")}</span><h3>${esc(q.title)}</h3><p>${esc(q.description||"Open the quiz to begin.")}</p><a class="button button-primary" href="${esc(q.google_form_url)}" target="_blank" rel="noopener noreferrer">Open Google Form ↗</a></article>`).join(""):'<p class="panel">No published quizzes yet.</p>';
@@ -1799,7 +1805,7 @@ $("refresh-leaderboard").onclick=refreshLeaderboard;
 async function getView(view){const {data,error}=await db.from(view).select("*");if(error)throw error;return data||[]}
 function rankingTable(rows,scoreKey="average_percentage"){
   if(!rows.length)return '<p class="muted">No rankings yet. At least three opted-in students need a verified score before rankings appear.</p>';
-  return `<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Student</th><th>Average / change</th><th>Quizzes</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td><span class="rank-medal" aria-label="Rank ${i+1}">${medal(i+1)}</span></td><td>${esc(r.display_name)}${r.user_id===currentUser.id?' <b>(you)</b>':""}</td><td>${Number(r[scoreKey]||0).toFixed(1)}%</td><td>${r.quiz_count??r.current_quiz_count??"—"}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Student</th><th>Average / change</th><th>Quizzes</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td><span class="rank-medal${i>=3?" ordinal-rank":""}" aria-label="Rank ${i+1}">${medal(i+1)}</span></td><td>${esc(r.display_name)}${r.user_id===currentUser.id?' <b>(you)</b>':""}</td><td>${Number(r[scoreKey]||0).toFixed(1)}%</td><td>${r.quiz_count??r.current_quiz_count??"—"}</td></tr>`).join("")}</tbody></table></div>`;
 }
 async function renderLeaderboard(){
   const box=$("leaderboard-content");box.setAttribute("aria-busy","true");box.innerHTML=loadingMessage("Loading rankings…");
@@ -1807,12 +1813,12 @@ async function renderLeaderboard(){
     if(activeBoard==="overall")box.innerHTML=rankingTable((await getView("overall_leaderboard")).sort((a,b)=>b.average_percentage-a.average_percentage));
     if(activeBoard==="courses"){
       const rows=await getView("course_leaderboard");
-      box.innerHTML=COURSES.map(c=>{const group=rows.filter(r=>r.course===c).sort((a,b)=>b.average_percentage-a.average_percentage);return `<div class="course-board"><h3>${esc(c)}</h3>${group.length?`<ol>${group.map((r,index)=>`<li><span class="rank-medal" aria-label="Rank ${index+1}">${medal(index+1)}</span> ${esc(r.display_name)} — <strong>${Number(r.average_percentage).toFixed(1)}%</strong> (${r.quiz_count} quizzes)</li>`).join("")}</ol>`:'<p class="muted">No qualifying scores.</p>'}</div>`}).join("");
+      box.innerHTML=COURSES.map(c=>{const group=rows.filter(r=>r.course===c).sort((a,b)=>b.average_percentage-a.average_percentage);return `<div class="course-board"><h3>${esc(c)}</h3>${group.length?`<ol>${group.map((r,index)=>`<li><span class="rank-medal${index>=3?" ordinal-rank":""}" aria-label="Rank ${index+1}">${medal(index+1)}</span> ${esc(r.display_name)} — <strong>${Number(r.average_percentage).toFixed(1)}%</strong> (${r.quiz_count} quizzes)</li>`).join("")}</ol>`:'<p class="muted">No qualifying scores.</p>'}</div>`}).join("");
     }
     if(activeBoard==="weekly")box.innerHTML=rankingTable((await getView("weekly_leaderboard")).sort((a,b)=>b.average_percentage-a.average_percentage));
     if(activeBoard==="improved"){
       const rows=(await getView("most_improved_leaderboard")).sort((a,b)=>b.improvement_percentage_points-a.improvement_percentage_points);
-      box.innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Student</th><th>Previous avg.</th><th>Current avg.</th><th>Improvement</th></tr></thead><tbody>${rows.map((r,index)=>`<tr><td><span class="rank-medal" aria-label="Rank ${index+1}">${medal(index+1)}</span></td><td>${esc(r.display_name)}</td><td>${Number(r.previous_average).toFixed(1)}%</td><td>${Number(r.current_average).toFixed(1)}%</td><td>+${Number(r.improvement_percentage_points).toFixed(1)} points</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">Not enough verified results in both seven-day periods yet.</p>';
+      box.innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Student</th><th>Previous avg.</th><th>Current avg.</th><th>Improvement</th></tr></thead><tbody>${rows.map((r,index)=>`<tr><td><span class="rank-medal${index>=3?" ordinal-rank":""}" aria-label="Rank ${index+1}">${medal(index+1)}</span></td><td>${esc(r.display_name)}</td><td>${Number(r.previous_average).toFixed(1)}%</td><td>${Number(r.current_average).toFixed(1)}%</td><td>+${Number(r.improvement_percentage_points).toFixed(1)} points</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">Not enough verified results in both seven-day periods yet.</p>';
     }
     if(activeBoard==="activity"){
       const rows=await getView("recent_group_activity");

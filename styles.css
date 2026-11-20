@@ -218,6 +218,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .home-leader-row>span:last-child{font-weight:700;color:var(--teal-dark)}
 .medal,.rank-medal{display:inline-flex;min-width:24px;align-items:center;justify-content:center}
 .rank-medal{font-size:18px}
+.ordinal-rank{min-width:24px;font-size:12px!important;font-weight:800;line-height:1;animation:rank-pop 320ms cubic-bezier(.2,.7,.25,1) both}
+.home-rank strong .ordinal-rank{font:800 12px Manrope,sans-serif}
+@keyframes rank-pop{from{opacity:0;transform:scale(.75)}to{opacity:1;transform:scale(1)}}
 .day-tabs{display:flex;gap:7px;overflow-x:auto;border-bottom:1px solid var(--line);margin:8px 0 16px}
 .day-tab{display:flex;align-items:center;gap:7px;white-space:nowrap;padding:11px 13px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:700}
 .day-tab.active{color:var(--teal);border-color:var(--teal)}
