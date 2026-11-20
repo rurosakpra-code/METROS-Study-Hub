@@ -1,0 +1,1 @@
+This file records the intended app.js changes: filter quiz_attempts by currentUser.id for personal progress, and calculate the group average from the existing verified leaderboard view.
