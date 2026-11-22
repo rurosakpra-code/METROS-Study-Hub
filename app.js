@@ -1649,12 +1649,22 @@ function renderPersonalStats(){
   $("results-body").innerHTML=n?attempts.map(a=>{
     const answerSummary=Array.isArray(a.answer_summary)?a.answer_summary:[];
     const review=answerSummary.length?`<details class="answer-review"><summary>Review answers (${answerSummary.length})</summary><ol>${answerSummary.map(item=>{
-      const points=Number.isFinite(item.points_awarded)&&Number.isFinite(item.points_possible)?`<p><strong>Points:</strong> ${esc(item.points_awarded)} / ${esc(item.points_possible)}</p>`:"";
-      return `<li><h4>${esc(item.question)}</h4><p><strong>Your answer:</strong> ${esc(item.answer)}</p>${points}${item.feedback?`<p><strong>Feedback:</strong> ${esc(item.feedback)}</p>`:""}</li>`;
+      const result=quizAnswerResult(item),status=`<span class="answer-result answer-${result.kind}">${result.label}</span>`;
+      const points=result.kind!=="pending"?`<p><strong>Points:</strong> ${esc(item.points_awarded)} / ${esc(item.points_possible)}</p>`:"";
+      const correctAnswers=Array.isArray(item.correct_answers)?item.correct_answers.filter(answer=>typeof answer==="string"):[];
+      const correctAnswer=correctAnswers.length?`<p><strong>Correct answer${correctAnswers.length===1?"":"s"}:</strong> ${correctAnswers.map(esc).join(", ")}</p>`:"";
+      return `<li><h4>${esc(item.question)} ${status}</h4><p><strong>Your answer:</strong> ${esc(item.answer)}</p>${correctAnswer}${points}${item.feedback?`<p><strong>Feedback:</strong> ${esc(item.feedback)}</p>`:""}</li>`;
     }).join("")}</ol></details>`:'<span class="muted">Not provided</span>';
     return `<tr><td>${esc(formatDate(a.created_at))}</td><td>${esc(a.course)}</td><td>${esc(a.quiz_title)}</td><td>${Number(a.score)} / ${Number(a.total_marks)} (${(100*Number(a.score)/Number(a.total_marks)).toFixed(1)}%)</td><td><span class="status-pill ${a.is_verified?"status-published":"status-draft"}">${a.is_verified?"Verified":"Private / unverified"}</span></td><td>${review}</td></tr>`;
   }).join(""):'<tr><td colspan="6">No results recorded yet.</td></tr>';
   renderStudyStreak();renderChart();renderAchievements();renderWeeklyQuizGoal();renderCourseFocus();
+}
+function quizAnswerResult(item){
+  if(!String(item.answer??"").trim())return {label:"Unanswered",kind:"unanswered"};
+  if(!Number.isFinite(item.points_awarded)||!Number.isFinite(item.points_possible)||item.points_possible<=0)return {label:"Result unavailable",kind:"pending"};
+  if(item.points_awarded>=item.points_possible)return {label:"Correct",kind:"correct"};
+  if(item.points_awarded<=0)return {label:"Incorrect",kind:"incorrect"};
+  return {label:"Partially correct",kind:"partial"};
 }
 function renderWeeklyQuizGoal(){
   const goal=userPreferences.weeklyQuizGoal||3,cutoff=Date.now()-7*DAY_MILLISECONDS;
@@ -1702,7 +1712,7 @@ function downloadProgressCsv(){
   ];
   attempts.forEach(attempt=>{
     const answers=Array.isArray(attempt.answer_summary)?attempt.answer_summary.map(item=>
-      `${item.question}: ${item.answer}${Number.isFinite(item.points_awarded)&&Number.isFinite(item.points_possible)?` (${item.points_awarded}/${item.points_possible} points)`:""}${item.feedback?` (Feedback: ${item.feedback})`:""}`
+      `${item.question}: ${quizAnswerResult(item).label}; Your answer: ${item.answer}${Array.isArray(item.correct_answers)&&item.correct_answers.length?`; Correct answer: ${item.correct_answers.join(", ")}`:""}${Number.isFinite(item.points_awarded)&&Number.isFinite(item.points_possible)?` (${item.points_awarded}/${item.points_possible} points)`:""}${item.feedback?` (Feedback: ${item.feedback})`:""}`
     ).join(" | "):"";
     rows.push([
       formatDateTime(attempt.created_at),attempt.course,attempt.quiz_title,attempt.score,attempt.total_marks,

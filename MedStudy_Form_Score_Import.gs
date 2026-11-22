@@ -18,12 +18,14 @@ function handleFormSubmit(event) {
     var item = itemResponse.getItem();
     var rawAnswer = itemResponse.getResponse();
     var feedback = itemResponse.getFeedback();
+    var correctAnswers = getCorrectAnswers(item);
 
     return {
       question: item.getTitle(),
       answer: Array.isArray(rawAnswer) ? rawAnswer.join(", ") : String(rawAnswer == null ? "" : rawAnswer),
       points_awarded: itemResponse.getScore(),
       points_possible: item.getPoints(),
+      correct_answers: correctAnswers,
       feedback: feedback ? feedback.getText() : ""
     };
   });
@@ -55,4 +57,24 @@ function handleFormSubmit(event) {
   if (result.getResponseCode() < 200 || result.getResponseCode() >= 300) {
     throw new Error("Score import failed (" + result.getResponseCode() + "): " + result.getContentText());
   }
+}
+
+function getCorrectAnswers(item) {
+  var choices;
+  switch (item.getType()) {
+    case FormApp.ItemType.MULTIPLE_CHOICE:
+      choices = item.asMultipleChoiceItem().getChoices();
+      break;
+    case FormApp.ItemType.CHECKBOX:
+      choices = item.asCheckboxItem().getChoices();
+      break;
+    case FormApp.ItemType.LIST:
+      choices = item.asListItem().getChoices();
+      break;
+    default:
+      return [];
+  }
+  return choices
+    .filter(function(choice) { return choice.isCorrectAnswer(); })
+    .map(function(choice) { return choice.getValue(); });
 }

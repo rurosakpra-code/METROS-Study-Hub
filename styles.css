@@ -66,6 +66,16 @@ input:focus,select:focus{box-shadow:0 0 0 3px var(--theme-focus)}
 .answer-review li:last-child{border-bottom:0}
 .answer-review h4{margin:0 0 7px;font:700 13px Manrope,sans-serif}
 .answer-review p{margin:5px 0;color:var(--muted);font-size:12px;line-height:1.5}
+.answer-result{display:inline-block;margin-left:7px;padding:3px 8px;border-radius:20px;font:700 10px 'DM Sans',sans-serif;vertical-align:middle}
+.answer-correct{background:#e4f5ec;color:#236b45}
+.answer-incorrect{background:#fde8e8;color:#963434}
+.answer-partial{background:#fff2d8;color:#815a16}
+.answer-pending{background:#edf1f3;color:#526775}
+.answer-unanswered{background:#edf1f3;color:#526775}
+body.theme-dark .answer-correct{background:#1e4935;color:#b8f0cd}
+body.theme-dark .answer-incorrect{background:#592e33;color:#ffd2d6}
+body.theme-dark .answer-partial{background:#51432a;color:#ffe1a3}
+body.theme-dark .answer-pending{background:#35454d;color:#d4e0e5}
 
 html{scroll-behavior:smooth}
 .page:not(.hidden),.intro,.auth-card,.welcome-banner{animation:fade-rise 420ms cubic-bezier(.2,.7,.25,1) both}

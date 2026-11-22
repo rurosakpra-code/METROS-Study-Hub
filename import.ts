@@ -6,6 +6,7 @@ type AnswerSummaryItem = {
   answer: string;
   points_awarded: number | null;
   points_possible: number | null;
+  correct_answers: string[];
   feedback: string;
 };
 
@@ -41,6 +42,9 @@ Deno.serve(async (req) => {
       if (!item || typeof item !== "object" || Array.isArray(item) ||
           typeof item.question !== "string" || typeof item.answer !== "string" ||
           typeof item.feedback !== "string" ||
+          (item.correct_answers !== undefined &&
+            (!Array.isArray(item.correct_answers) || item.correct_answers.length > 20 ||
+              !item.correct_answers.every((answer: unknown) => typeof answer === "string"))) ||
           (item.points_awarded !== null && (typeof item.points_awarded !== "number" || !Number.isFinite(item.points_awarded))) ||
           (item.points_possible !== null && (typeof item.points_possible !== "number" || !Number.isFinite(item.points_possible)))) {
         return Response.json({ error: "Invalid answer summary" }, { status: 400 });
@@ -50,6 +54,7 @@ Deno.serve(async (req) => {
         answer: item.answer.slice(0, 2000),
         points_awarded: item.points_awarded,
         points_possible: item.points_possible,
+        correct_answers: (item.correct_answers || []).map((answer: string) => answer.slice(0, 1000)),
         feedback: item.feedback.slice(0, 2000)
       });
     }
