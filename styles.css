@@ -59,6 +59,13 @@ input:focus,select:focus{box-shadow:0 0 0 3px var(--theme-focus)}
 .profile-form input[type=color]{height:44px;padding:4px;cursor:pointer}
 .profile-form #theme-color-help{margin:0;align-self:center}
 .profile-form #reset-theme-color{align-self:start}
+.answer-review{min-width:190px;white-space:normal}
+.answer-review summary{color:var(--teal);font-weight:700;cursor:pointer}
+.answer-review ol{padding-left:22px;min-width:250px;white-space:normal}
+.answer-review li{padding:10px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.answer-review li:last-child{border-bottom:0}
+.answer-review h4{margin:0 0 7px;font:700 13px Manrope,sans-serif}
+.answer-review p{margin:5px 0;color:var(--muted);font-size:12px;line-height:1.5}
 
 html{scroll-behavior:smooth}
 .page:not(.hidden),.intro,.auth-card,.welcome-banner{animation:fade-rise 420ms cubic-bezier(.2,.7,.25,1) both}
@@ -633,3 +640,86 @@ body.theme-dark .study-task-item{background:#20333c}
   .study-task-form label:first-child{grid-column:auto}
 }
 body.theme-dark.high-contrast{--line:#81919a;--muted:#e0e8eb}
+
+.quiz-filters{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:0 14px;margin-bottom:12px}
+.quiz-filters label{margin-bottom:10px}
+.quiz-favorites-toggle{display:flex;align-items:center;gap:9px;grid-column:1/-1;margin:4px 0 0}
+.quiz-favorites-toggle input{width:18px;height:18px;margin:0;accent-color:var(--teal)}
+#quiz-results-status{margin:8px 0}
+.quiz-topic-tags{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 15px}
+.quiz-topic-tag{padding:4px 8px;border-radius:20px;background:var(--mint);color:var(--teal-dark);font-size:10px;font-weight:700}
+.quiz-card-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:auto}
+.content-card .quiz-card-actions .button{margin:0;align-self:auto}
+.quiz-favorite-button[aria-pressed="true"]{background:var(--mint);color:var(--teal-dark)}
+.study-goal-panel{margin:20px 0}
+.study-goal-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.study-goal-heading h2{margin:3px 0 6px}
+.study-goal-heading p:not(.eyebrow){margin:0}
+.study-goal-heading .eyebrow{margin:0 0 5px}
+.study-goal-form{display:flex;align-items:flex-end;gap:9px}
+.study-goal-form label{width:150px;margin:0}
+.study-goal-form input{margin-top:5px}
+.study-goal-form button{margin-bottom:16px;white-space:nowrap}
+.study-goal-track,.course-focus-track{height:10px;overflow:hidden;border-radius:99px;background:var(--line)}
+.study-goal-track{margin-top:20px}
+.study-goal-track span,.course-focus-track span{display:block;width:0;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--teal),var(--teal-dark));transition:width 500ms ease}
+.study-goal-panel .field-help,.study-goal-panel .message{margin:7px 0 0}
+.course-focus-panel{margin:20px 0}
+.course-focus-panel .leaderboard-heading{margin-bottom:16px}
+.course-focus-panel .leaderboard-heading h2{margin:3px 0 6px}
+.course-focus-panel .leaderboard-heading p{margin:0}
+.course-focus-panel .eyebrow{margin:0 0 5px}
+.course-focus-list{display:grid;gap:13px}
+.course-focus-row{display:grid;gap:7px}
+.course-focus-row>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.course-focus-row strong{font-size:13px}
+.course-focus-row span{color:var(--muted);font-size:11px}
+.course-focus-track{height:8px}
+.course-focus-actions{margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}
+.progress-report-actions{display:flex;gap:8px;flex-wrap:wrap}
+.progress-report-panel .leaderboard-heading{align-items:center}
+.progress-report-panel .leaderboard-heading h2{margin-bottom:5px}
+.progress-report-panel .leaderboard-heading p{margin:0}
+.progress-report-panel .message{margin:8px 0 0}
+@media(max-width:850px){.quiz-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){
+  .quiz-filters{grid-template-columns:1fr;padding:20px}
+  .quiz-favorites-toggle{grid-column:auto}
+  .study-goal-heading{flex-direction:column}
+  .study-goal-form{width:100%}
+  .study-goal-form label{flex:1}
+  .course-focus-actions{flex-direction:column;align-items:stretch}
+  .course-focus-actions .button{width:100%}
+  .progress-report-panel .leaderboard-heading{align-items:flex-start;flex-direction:column}
+  .progress-report-actions{width:100%}
+  .progress-report-actions button{flex:1}
+}
+@media print{
+  @page{margin:15mm}
+  body.printing-progress{background:#fff!important;color:#111!important}
+  body.printing-progress> :not(.site-header):not(main){display:none!important}
+  body.printing-progress .site-header{display:none!important}
+  body.printing-progress main{display:block!important;visibility:visible!important;max-width:none;margin:0;padding:0}
+  body.printing-progress main> :not(#app-view){display:none!important}
+  body.printing-progress #app-view{display:block!important;visibility:visible!important}
+  body.printing-progress #app-view> :not(#page-progress){display:none!important}
+  body.printing-progress #page-progress{display:block!important;visibility:visible!important;position:static!important;width:100%;margin:0;padding:0}
+  body.printing-progress #page-progress *{visibility:visible!important;animation:none!important;box-shadow:none!important}
+  body.printing-progress #page-progress #score-entry-panel,
+  body.printing-progress #page-progress #leaderboard-panel,
+  body.printing-progress #page-progress .progress-heading-tools,
+  body.printing-progress #page-progress .progress-report-actions,
+  body.printing-progress #page-progress #progress-export-status,
+  body.printing-progress #page-progress #study-goal-form,
+  body.printing-progress #page-progress #course-focus-actions{display:none!important}
+  body.printing-progress #page-progress .panel,
+  body.printing-progress #page-progress .stat{break-inside:avoid;border:1px solid #bbb;background:#fff!important;color:#111!important}
+  body.printing-progress #page-progress .page-heading h1{font-size:26px}
+  body.printing-progress #page-progress .page-heading p,
+  body.printing-progress #page-progress .muted,
+  body.printing-progress #page-progress th{color:#444!important}
+  body.printing-progress #page-progress .table-wrap{overflow:visible}
+  body.printing-progress #page-progress table{font-size:9pt}
+  body.printing-progress #page-progress th,
+  body.printing-progress #page-progress td{white-space:normal;padding:6px 4px}
+}

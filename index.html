@@ -176,7 +176,16 @@
 </section>
 
 <section id="page-quizzes" class="page hidden"><div class="page-heading"><div><p class="eyebrow">TEST YOUR KNOWLEDGE</p><h1>Quiz centre</h1><p>Choose a course and open its Google Form quiz.</p></div></div>
-  <div class="filter-row"><label>Course<select id="quiz-course-filter"><option value="all">All courses</option></select></label></div><div id="quiz-list" class="card-grid"></div>
+  <div class="quiz-filters panel">
+    <label>Search quizzes<input id="quiz-search" type="search" placeholder="Search title, description or topic" autocomplete="off"></label>
+    <label>Course<select id="quiz-course-filter"><option value="all">All courses</option></select></label>
+    <label>Topic<select id="quiz-topic-filter"><option value="all">All topics</option></select></label>
+    <label>Difficulty<select id="quiz-difficulty-filter"><option value="all">All difficulties</option><option>Practice</option><option>Easy</option><option>Moderate</option><option>Difficult</option><option>Exam level</option></select></label>
+    <label class="check-label quiz-favorites-toggle"><input id="quiz-favorites-only" type="checkbox"> Show favorites only</label>
+  </div>
+  <p id="quiz-results-status" class="field-help" role="status" aria-live="polite"></p>
+  <p id="quiz-preference-status" class="message" role="status" aria-live="polite"></p>
+  <div id="quiz-list" class="card-grid"></div>
 </section>
 
 <section id="page-progress" class="page hidden">
@@ -188,6 +197,19 @@
     <div class="streak-progress-track" role="progressbar" aria-label="Progress to a seven-day study streak" aria-valuemin="0" aria-valuemax="7" aria-valuenow="0"><span id="streak-progress-fill"></span></div>
     <p id="streak-sync-status" class="field-help" role="status"></p>
   </section>
+  <section class="panel study-goal-panel" aria-labelledby="study-goal-heading">
+    <div class="study-goal-heading"><div><p class="eyebrow">YOUR WEEKLY TARGET</p><h2 id="study-goal-heading">Quiz practice goal</h2><p id="study-goal-summary" class="muted">Set a target and track your quiz attempts over the last seven days.</p></div>
+      <form id="study-goal-form" class="study-goal-form"><label for="weekly-quiz-goal">Quizzes per week<input id="weekly-quiz-goal" type="number" min="1" max="20" step="1" required></label><button class="button button-outline" type="submit">Save goal</button></form>
+    </div>
+    <div class="study-goal-track" role="progressbar" aria-label="Weekly quiz goal progress" aria-valuemin="0" aria-valuemax="3" aria-valuenow="0"><span id="study-goal-fill"></span></div>
+    <p id="study-goal-status" class="field-help" role="status" aria-live="polite"></p>
+    <p id="study-goal-save-status" class="message" role="status" aria-live="polite"></p>
+  </section>
+  <section id="course-focus-panel" class="panel course-focus-panel" aria-labelledby="course-focus-heading">
+    <div class="leaderboard-heading"><div><p class="eyebrow">PERSONALIZED REVIEW</p><h2 id="course-focus-heading">What to focus on next</h2><p id="course-focus-summary" class="muted">Course recommendations will appear after you record a quiz result.</p></div></div>
+    <div id="course-focus-list" class="course-focus-list"></div>
+    <div id="course-focus-actions" class="button-row course-focus-actions hidden"></div>
+  </section>
   <div id="score-entry-panel" class="panel"><h2>Record a practice score</h2><p class="muted">Use this for personal tracking when a quiz is not connected to automatic score import.</p>
     <form id="score-form" class="score-form"><label>Course<select id="score-course" required></select></label><label>Quiz title<input id="score-title" required maxlength="140" placeholder="e.g. Cell Biology Test 1"></label>
     <label>Score earned<input id="score-earned" type="number" min="0" step="0.01" required></label><label>Total marks<input id="score-total" type="number" min="0.01" step="0.01" required></label><button class="button button-primary" type="submit">Save private score</button></form><p id="score-message" class="message" role="status"></p>
@@ -195,7 +217,7 @@
   <div id="stats-grid" class="stats-grid"></div>
   <div class="panel"><h2>My performance by course</h2><canvas id="performance-chart" height="120" aria-label="Performance chart"></canvas></div>
   <div class="panel"><h2>My achievements</h2><div id="achievement-list" class="achievement-grid"></div></div>
-  <div class="panel"><h2>My recent results</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Course</th><th>Quiz</th><th>Score</th><th>Status</th></tr></thead><tbody id="results-body"></tbody></table></div></div>
+  <div class="panel progress-report-panel"><div class="leaderboard-heading"><div><h2>My recent results</h2><p class="muted">Download a spreadsheet or print your personal progress report.</p></div><div class="progress-report-actions"><button class="button button-outline" id="export-progress-csv" type="button">Download CSV</button><button class="button button-primary" id="print-progress-report" type="button">Print report</button></div></div><p id="progress-export-status" class="message" role="status" aria-live="polite"></p><div class="table-wrap"><table><thead><tr><th>Date</th><th>Course</th><th>Quiz</th><th>Score</th><th>Status</th><th>Question review</th></tr></thead><tbody id="results-body"></tbody></table></div></div>
   <div id="leaderboard-panel" class="panel"><div class="leaderboard-heading"><div><h2>Study-group leaderboard</h2><p class="muted">Students must opt in. Rankings start when three opted-in students have at least one verified attempt; all eligible students are ranked.</p></div></div>
     <div class="leaderboard-tabs"><button class="leaderboard-tab active" data-board="overall">Overall</button><button class="leaderboard-tab" data-board="courses">By course</button><button class="leaderboard-tab" data-board="weekly">This week</button><button class="leaderboard-tab" data-board="improved">Most improved</button><button class="leaderboard-tab" data-board="activity">Recent activity</button></div>
     <div id="leaderboard-content"><p class="muted loading-inline" aria-live="polite"><span class="refresh-spinner" aria-hidden="true"></span>Loading rankings…</p></div><div id="student-detail" class="student-detail hidden"></div>
@@ -302,6 +324,7 @@
       <form id="admin-quiz-form" class="panel"><h2 id="admin-quiz-heading">Add a quiz</h2><input id="admin-quiz-id" type="hidden">
         <label>Course<select id="admin-quiz-course" required></select></label><label>Quiz title<input id="admin-quiz-title" required maxlength="140"></label>
         <label>Description<textarea id="admin-quiz-description" rows="3" maxlength="500"></textarea></label>
+        <label>Topics (comma separated)<input id="admin-quiz-topics" maxlength="300" placeholder="e.g. Cell biology, membranes"></label>
         <label>Difficulty<select id="admin-quiz-difficulty"><option>Practice</option><option>Easy</option><option>Moderate</option><option>Difficult</option><option>Exam level</option></select></label>
         <label>Google Forms responder URL<input id="admin-quiz-url" type="url" required placeholder="https://docs.google.com/forms/..."></label>
         <label>Google Form ID (for verified score import)<input id="admin-quiz-form-id" type="text" placeholder="Form ID from the form URL"></label>

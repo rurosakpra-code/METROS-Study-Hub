@@ -29,7 +29,7 @@ const FEATURE_OPTIONS = [
 const DEFAULT_USER_PREFERENCES={
   language:"system",timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC",region:"global",
   darkMode:false,density:"comfortable",textSize:"medium",reduceMotion:false,noAutoplay:true,
-  highContrast:false,colorVision:"none",announcementAlerts:true,scheduleAlerts:true,
+  highContrast:false,colorVision:"none",announcementAlerts:true,scheduleAlerts:true,quizFavorites:[],weeklyQuizGoal:3,
   quietHours:false,quietStart:"22:00",quietEnd:"07:00",dailyPopupLimit:6,activityConsent:true
 };
 const $ = id => document.getElementById(id);
@@ -123,6 +123,10 @@ function sanitizeUserPreferences(saved={}){
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(merged.quietStart))merged.quietStart="22:00";
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(merged.quietEnd))merged.quietEnd="07:00";
   merged.dailyPopupLimit=Math.max(1,Math.min(20,Number.parseInt(merged.dailyPopupLimit,10)||6));
+  merged.quizFavorites=Array.isArray(merged.quizFavorites)
+    ?[...new Set(merged.quizFavorites.filter(id=>/^\d+$/.test(String(id))).map(String))].slice(0,500)
+    :[];
+  merged.weeklyQuizGoal=Math.max(1,Math.min(20,Number.parseInt(merged.weeklyQuizGoal,10)||3));
   ["darkMode","reduceMotion","noAutoplay","highContrast","announcementAlerts","scheduleAlerts","quietHours","activityConsent"].forEach(key=>merged[key]=merged[key]!==false&&merged[key]!==0);
   return merged;
 }
@@ -132,6 +136,27 @@ function loadUserPreferences(){
   try{saved=JSON.parse(localStorage.getItem(key)||"{}")}
   catch(error){console.warn("Could not load personal settings.",error)}
   return sanitizeUserPreferences(saved);
+}
+async function savePersonalPreferences(updates,statusId,successText){
+  if(!currentUser)return false;
+  userPreferences=sanitizeUserPreferences({...userPreferences,...updates});
+  let localError=null;
+  try{localStorage.setItem(userPreferencesKey(),JSON.stringify(userPreferences))}
+  catch(error){localError=error;console.error("Could not save personal preferences on this device.",error)}
+  try{
+    const {error}=await db.from("profiles").update({preferences:userPreferences}).eq("id",currentUser.id);
+    if(error){
+      console.error("Could not sync personal preferences to the account.",error);
+      message(statusId,`Saved on this device, but account sync failed: ${error.message}`,true);
+      return false;
+    }
+    message(statusId,localError?`Synced to your account, but device storage failed: ${localError.message}`:successText,!!localError);
+    return !localError;
+  }catch(error){
+    console.error("Could not sync personal preferences to the account.",error);
+    message(statusId,`Saved on this device, but account sync failed: ${error.message}`,true);
+    return false;
+  }
 }
 function selectedLocale(){
   return userPreferences.language==="system"?(navigator.language||"en-GB"):userPreferences.language;
@@ -1261,6 +1286,7 @@ function renderBulkQuizRows(){
   $("bulk-quiz-grid").innerHTML=COURSES.map(course=>`<fieldset class="bulk-quiz-course" data-course="${esc(course)}"><legend>${esc(course)}</legend><label class="bulk-course-label"><input type="checkbox" class="bulk-course-toggle"> Include in this batch</label>
     <label>Quiz title<input class="bulk-course-input" data-field="title" maxlength="140" required disabled></label>
     <label>Google Forms responder URL<input class="bulk-course-input" data-field="url" type="url" placeholder="https://docs.google.com/forms/..." required disabled></label>
+    <label>Topics (optional)<input class="bulk-course-input" data-field="topics" maxlength="300" placeholder="Cell biology, membranes" disabled></label>
     <label>Google Form ID (optional)<input class="bulk-course-input" data-field="form-id" disabled></label></fieldset>`).join("");
   document.querySelectorAll(".bulk-course-toggle").forEach(toggle=>toggle.addEventListener("change",()=>{
     toggle.closest(".bulk-quiz-course").querySelectorAll(".bulk-course-input").forEach(input=>{input.disabled=!toggle.checked});
@@ -1400,10 +1426,41 @@ function medal(rank){
   return `${rank}${suffix}`;
 }
 function renderQuizzes(){
-  const c=$("quiz-course-filter").value||"all",rows=quizzes.filter(q=>c==="all"||q.course===c);
-  $("quiz-list").innerHTML=rows.length?rows.map(q=>`<article class="content-card"><span class="tag">${esc(q.course)} • ${esc(q.difficulty||"Practice")}</span><h3>${esc(q.title)}</h3><p>${esc(q.description||"Open the quiz to begin.")}</p><a class="button button-primary" href="${esc(q.google_form_url)}" target="_blank" rel="noopener noreferrer">Open Google Form ↗</a></article>`).join(""):'<p class="panel">No published quizzes yet.</p>';
+  const topicSelect=$("quiz-topic-filter"),previousTopic=topicSelect.value;
+  const allTopics=[...new Set(quizzes.flatMap(quiz=>Array.isArray(quiz.topics)?quiz.topics.filter(topic=>typeof topic==="string"&&topic.trim()):[]))]
+    .sort((a,b)=>a.localeCompare(b));
+  topicSelect.innerHTML='<option value="all">All topics</option>'+allTopics.map(topic=>`<option value="${esc(topic)}">${esc(topic)}</option>`).join("");
+  if(allTopics.includes(previousTopic))topicSelect.value=previousTopic;
+  const course=$("quiz-course-filter").value||"all",difficulty=$("quiz-difficulty-filter").value||"all";
+  const topic=topicSelect.value||"all",query=$("quiz-search").value.trim().toLocaleLowerCase();
+  const favorites=new Set(userPreferences.quizFavorites||[]),favoritesOnly=$("quiz-favorites-only").checked;
+  const rows=quizzes.filter(quiz=>{
+    const topics=Array.isArray(quiz.topics)?quiz.topics:[];
+    const searchable=[quiz.title,quiz.description,quiz.course,quiz.difficulty,...topics].filter(Boolean).join(" ").toLocaleLowerCase();
+    return (course==="all"||quiz.course===course)&&(difficulty==="all"||(quiz.difficulty||"Practice")===difficulty)&&
+      (topic==="all"||topics.includes(topic))&&(!query||searchable.includes(query))&&
+      (!favoritesOnly||favorites.has(String(quiz.id)));
+  });
+  $("quiz-results-status").textContent=`${rows.length} quiz${rows.length===1?"":"zes"} found.`;
+  $("quiz-list").innerHTML=rows.length?rows.map(quiz=>{
+    const favorite=favorites.has(String(quiz.id)),topics=Array.isArray(quiz.topics)?quiz.topics:[];
+    return `<article class="content-card"><span class="tag">${esc(quiz.course)} • ${esc(quiz.difficulty||"Practice")}</span><h3>${esc(quiz.title)}</h3><p>${esc(quiz.description||"Open the quiz to begin.")}</p>${topics.length?`<div class="quiz-topic-tags">${topics.map(item=>`<span class="quiz-topic-tag">${esc(item)}</span>`).join("")}</div>`:""}<div class="quiz-card-actions"><a class="button button-primary" href="${esc(quiz.google_form_url)}" target="_blank" rel="noopener noreferrer">Open Google Form ↗</a><button class="button button-outline quiz-favorite-button" type="button" data-favorite-quiz="${esc(quiz.id)}" aria-pressed="${favorite}" aria-label="${favorite?"Remove from":"Add to"} favorites: ${esc(quiz.title)}">${favorite?"★ Saved":"☆ Save"}</button></div></article>`;
+  }).join(""):'<p class="panel">No quizzes match these filters. Try changing your search or filters.</p>';
 }
-$("quiz-course-filter").onchange=renderQuizzes;
+function parseQuizTopics(value){
+  return [...new Map(String(value||"").split(",").map(topic=>topic.trim().slice(0,40)).filter(Boolean)
+    .map(topic=>[topic.toLocaleLowerCase(),topic])).values()].slice(0,12);
+}
+["quiz-course-filter","quiz-topic-filter","quiz-difficulty-filter","quiz-favorites-only"].forEach(id=>$(id).addEventListener("change",renderQuizzes));
+$("quiz-search").addEventListener("input",renderQuizzes);
+$("quiz-list").addEventListener("click",event=>{
+  const button=event.target.closest("[data-favorite-quiz]");
+  if(!button)return;
+  const id=button.dataset.favoriteQuiz,current=new Set(userPreferences.quizFavorites||[]);
+  if(current.has(id))current.delete(id);else current.add(id);
+  const save=savePersonalPreferences({quizFavorites:[...current]},"quiz-preference-status","Quiz favorites synced to your account.");
+  renderQuizzes();void save;
+});
 function renderDriveSearchResults(){
   const results=$("drive-search-results");
   if(!driveFilesLoaded){results.textContent="";return}
@@ -1553,6 +1610,26 @@ $("study-task-list").addEventListener("click",event=>{
 $("study-task-clear-completed").addEventListener("click",()=>{
   saveStudyTasks(studyTasks.filter(task=>!task.completed));
 });
+$("study-goal-form").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const goal=Number($("weekly-quiz-goal").value);
+  if(!Number.isInteger(goal)||goal<1||goal>20){message("study-goal-save-status","Choose a weekly target between 1 and 20 quizzes.",true);return}
+  const submit=$("study-goal-form").querySelector('[type="submit"]');
+  submit.disabled=true;
+  await savePersonalPreferences({weeklyQuizGoal:goal},"study-goal-save-status","Weekly quiz goal saved to your account.");
+  renderWeeklyQuizGoal();submit.disabled=false;
+});
+$("page-progress").addEventListener("click",event=>{
+  const quizzesButton=event.target.closest("[data-focus-quizzes]"),resourcesButton=event.target.closest("[data-focus-resources]");
+  if(quizzesButton){
+    $("quiz-course-filter").value=quizzesButton.dataset.focusQuizzes;showPage("quizzes");return;
+  }
+  if(resourcesButton){
+    $("resource-course-filter").value=resourcesButton.dataset.focusResources;showPage("resources");
+  }
+});
+$("export-progress-csv").addEventListener("click",downloadProgressCsv);
+$("print-progress-report").addEventListener("click",printProgressReport);
 $("score-form").addEventListener("submit",async e=>{
   e.preventDefault();const score=Number($("score-earned").value),total=Number($("score-total").value);
   if(total<=0||score<0||score>total){message("score-message","Enter a valid score; earned marks cannot exceed total marks.",true);return}
@@ -1569,8 +1646,89 @@ function renderPersonalStats(){
   const verified=attempts.filter(a=>a.is_verified).length;
   $("stats-grid").innerHTML=`<div class="stat"><strong data-count-up="${n}">${n}</strong><span>Personal quizzes recorded</span></div><div class="stat"><strong data-count-up="${avg.toFixed(1)}" data-count-decimals="1" data-count-suffix="%">${avg.toFixed(1)}%</strong><span>Personal average</span></div><div class="stat"><strong data-count-up="${verified}">${verified}</strong><span>Verified scores</span></div><div class="stat"><strong id="website-usage-total">${esc(formatDuration(loadWebsiteUsage()))}</strong><span>Time on this device</span></div>`;
   $("stats-grid").querySelectorAll("[data-count-up]").forEach(item=>animateCountUp(item,item.dataset.countUp,Number(item.dataset.countDecimals)||0,item.dataset.countSuffix||""));
-  $("results-body").innerHTML=n?attempts.map(a=>`<tr><td>${esc(formatDate(a.created_at))}</td><td>${esc(a.course)}</td><td>${esc(a.quiz_title)}</td><td>${Number(a.score)} / ${Number(a.total_marks)} (${(100*Number(a.score)/Number(a.total_marks)).toFixed(1)}%)</td><td><span class="status-pill ${a.is_verified?"status-published":"status-draft"}">${a.is_verified?"Verified":"Private / unverified"}</span></td></tr>`).join(""):'<tr><td colspan="5">No results recorded yet.</td></tr>';
-  renderStudyStreak();renderChart();renderAchievements();
+  $("results-body").innerHTML=n?attempts.map(a=>{
+    const answerSummary=Array.isArray(a.answer_summary)?a.answer_summary:[];
+    const review=answerSummary.length?`<details class="answer-review"><summary>Review answers (${answerSummary.length})</summary><ol>${answerSummary.map(item=>{
+      const points=Number.isFinite(item.points_awarded)&&Number.isFinite(item.points_possible)?`<p><strong>Points:</strong> ${esc(item.points_awarded)} / ${esc(item.points_possible)}</p>`:"";
+      return `<li><h4>${esc(item.question)}</h4><p><strong>Your answer:</strong> ${esc(item.answer)}</p>${points}${item.feedback?`<p><strong>Feedback:</strong> ${esc(item.feedback)}</p>`:""}</li>`;
+    }).join("")}</ol></details>`:'<span class="muted">Not provided</span>';
+    return `<tr><td>${esc(formatDate(a.created_at))}</td><td>${esc(a.course)}</td><td>${esc(a.quiz_title)}</td><td>${Number(a.score)} / ${Number(a.total_marks)} (${(100*Number(a.score)/Number(a.total_marks)).toFixed(1)}%)</td><td><span class="status-pill ${a.is_verified?"status-published":"status-draft"}">${a.is_verified?"Verified":"Private / unverified"}</span></td><td>${review}</td></tr>`;
+  }).join(""):'<tr><td colspan="6">No results recorded yet.</td></tr>';
+  renderStudyStreak();renderChart();renderAchievements();renderWeeklyQuizGoal();renderCourseFocus();
+}
+function renderWeeklyQuizGoal(){
+  const goal=userPreferences.weeklyQuizGoal||3,cutoff=Date.now()-7*DAY_MILLISECONDS;
+  const count=attempts.filter(attempt=>Number.isFinite(new Date(attempt.created_at).getTime())&&new Date(attempt.created_at).getTime()>=cutoff).length;
+  const progress=Math.min(100,100*count/goal),track=document.querySelector(".study-goal-track");
+  $("weekly-quiz-goal").value=String(goal);
+  $("study-goal-summary").textContent=`${count} of ${goal} quiz${goal===1?"":"zes"} recorded in the last 7 days.`;
+  $("study-goal-status").textContent=count>=goal?"Weekly target reached. Keep up the good work.":`${goal-count} more quiz${goal-count===1?"":"zes"} to reach your target.`;
+  track.setAttribute("aria-valuemax",String(goal));track.setAttribute("aria-valuenow",String(Math.min(count,goal)));
+  $("study-goal-fill").style.width=`${progress}%`;
+}
+function renderCourseFocus(){
+  const courseStats=COURSES.map(course=>{
+    const rows=attempts.filter(attempt=>attempt.course===course&&Number(attempt.total_marks)>0);
+    return {course,count:rows.length,average:rows.length?rows.reduce((sum,attempt)=>sum+100*Number(attempt.score)/Number(attempt.total_marks),0)/rows.length:0};
+  }).filter(item=>item.count).sort((a,b)=>a.average-b.average||b.count-a.count);
+  const list=$("course-focus-list"),actions=$("course-focus-actions");
+  if(!courseStats.length){
+    $("course-focus-summary").textContent="Record a quiz result to see which course could use more practice.";
+    list.innerHTML='<p class="muted">No course results to compare yet.</p>';actions.classList.add("hidden");return;
+  }
+  const focus=courseStats[0];
+  $("course-focus-summary").textContent=focus.average<70
+    ?`${focus.course} is currently your lowest-scoring course at ${focus.average.toFixed(1)}%.`
+    :`${focus.course} is your lowest-scoring course at ${focus.average.toFixed(1)}%. Keep practising to maintain your progress.`;
+  list.innerHTML=courseStats.map(item=>`<div class="course-focus-row"><div><strong>${esc(item.course)}</strong><span>${item.average.toFixed(1)}% average · ${item.count} result${item.count===1?"":"s"}</span></div><div class="course-focus-track" role="progressbar" aria-label="${esc(item.course)} average score" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${item.average.toFixed(1)}"><span style="width:${Math.max(0,Math.min(100,item.average))}%"></span></div></div>`).join("");
+  actions.innerHTML=`${featureEnabled("quizzes")?`<button class="button button-primary" type="button" data-focus-quizzes="${esc(focus.course)}">Practice ${esc(focus.course)} quizzes</button>`:""}${featureEnabled("resources")?`<button class="button button-outline" type="button" data-focus-resources="${esc(focus.course)}">Review ${esc(focus.course)} resources</button>`:""}`;
+  actions.classList.toggle("hidden",!actions.childElementCount);
+}
+function csvCell(value){
+  const text=String(value??""),safe=/^[\t\r\n ]*[=+\-@]/.test(text)?`'${text}`:text;
+  return `"${safe.replace(/"/g,'""')}"`;
+}
+function downloadProgressCsv(){
+  const overallAverage=attempts.length?attempts.reduce((sum,attempt)=>sum+100*Number(attempt.score)/Number(attempt.total_marks),0)/attempts.length:0;
+  const rows=[
+    ["METROS Study Hub progress report"],
+    ["Student",$("home-display-name").textContent],
+    ["Generated",formatDateTime(new Date())],
+    ["Recorded quizzes",attempts.length],
+    ["Overall average",`${overallAverage.toFixed(1)}%`],
+    ["Weekly target",`${attempts.filter(attempt=>new Date(attempt.created_at).getTime()>=Date.now()-7*DAY_MILLISECONDS).length} / ${userPreferences.weeklyQuizGoal} quizzes`],
+    [],
+    ["Date","Course","Quiz","Score","Total marks","Percentage","Verification","Question review"]
+  ];
+  attempts.forEach(attempt=>{
+    const answers=Array.isArray(attempt.answer_summary)?attempt.answer_summary.map(item=>
+      `${item.question}: ${item.answer}${Number.isFinite(item.points_awarded)&&Number.isFinite(item.points_possible)?` (${item.points_awarded}/${item.points_possible} points)`:""}${item.feedback?` (Feedback: ${item.feedback})`:""}`
+    ).join(" | "):"";
+    rows.push([
+      formatDateTime(attempt.created_at),attempt.course,attempt.quiz_title,attempt.score,attempt.total_marks,
+      `${(100*Number(attempt.score)/Number(attempt.total_marks)).toFixed(1)}%`,
+      attempt.is_verified?"Verified":"Private / unverified",answers
+    ]);
+  });
+  try{
+    const blob=new Blob(["\uFEFF"+rows.map(row=>row.map(csvCell).join(",")).join("\r\n")],{type:"text/csv;charset=utf-8"});
+    const url=URL.createObjectURL(blob),link=document.createElement("a");
+    link.href=url;link.download=`metros-progress-${localDateKey()}.csv`;document.body.append(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    message("progress-export-status","Your progress report was downloaded.");
+  }catch(error){
+    console.error("Could not export the progress report.",error);
+    message("progress-export-status","Could not download the report: "+error.message,true);
+  }
+}
+function printProgressReport(){
+  const progressPage=$("page-progress"),wasHidden=progressPage.classList.contains("hidden");
+  progressPage.classList.remove("hidden");document.body.classList.add("printing-progress");
+  try{window.print()}
+  finally{
+    document.body.classList.remove("printing-progress");
+    if(wasHidden)progressPage.classList.add("hidden");
+  }
 }
 function renderChart(){
   const ctx=$("performance-chart");if(chart)chart.destroy();
@@ -1622,7 +1780,7 @@ async function loadProfile(){
     const activityWasReset=resetMarkerAvailable&&data.activity_reset_at?applyActivityResetMarker(data.activity_reset_at):false;
     if(preferencesAvailable&&data.preferences&&typeof data.preferences==="object"&&!Array.isArray(data.preferences)){
       userPreferences=sanitizeUserPreferences({...userPreferences,...data.preferences});
-      applyUserPreferences();fillSettingsForm();
+      applyUserPreferences();fillSettingsForm();renderQuizzes();renderWeeklyQuizGoal();renderCourseFocus();
     }
     const themeColor=data.theme_color||DEFAULT_THEME_COLOR;
     if(!applyThemeColor(themeColor)){message("profile-message","Your saved website colour is invalid. Choose a new colour and save your profile.",true);return}
@@ -1697,7 +1855,8 @@ async function saveUserSettings(event){
     quietHours:$("settings-quiet-enabled").checked,quietStart:$("settings-quiet-start").value,quietEnd:$("settings-quiet-end").value,
     dailyPopupLimit,activityConsent:$("settings-activity-consent").checked,
     reduceMotion:$("settings-reduce-motion").checked,noAutoplay:$("settings-no-autoplay").checked,
-    highContrast:$("settings-high-contrast").checked,colorVision:$("settings-color-vision").value
+    highContrast:$("settings-high-contrast").checked,colorVision:$("settings-color-vision").value,
+    quizFavorites:userPreferences.quizFavorites,weeklyQuizGoal:userPreferences.weeklyQuizGoal
   };
   if(!next.quietStart||!next.quietEnd){message("settings-message","Enter both quiet-hour times.",true);return}
   userPreferences={...DEFAULT_USER_PREFERENCES,...next};
@@ -2035,7 +2194,7 @@ function clearAdminForm(type){
 $("admin-quiz-form").onsubmit=async e=>{
   e.preventDefault();if(!isAdmin)return;const id=$("admin-quiz-id").value,url=$("admin-quiz-url").value.trim();
   if(!safeUrl(url)){message("admin-quiz-message","Enter a valid http/https URL.",true);return}
-  const row={course:$("admin-quiz-course").value,title:$("admin-quiz-title").value.trim(),description:$("admin-quiz-description").value.trim(),difficulty:$("admin-quiz-difficulty").value,google_form_url:url,google_form_id:$("admin-quiz-form-id").value.trim()||null,is_published:$("admin-quiz-published").checked};
+  const row={course:$("admin-quiz-course").value,title:$("admin-quiz-title").value.trim(),description:$("admin-quiz-description").value.trim(),topics:parseQuizTopics($("admin-quiz-topics").value),difficulty:$("admin-quiz-difficulty").value,google_form_url:url,google_form_id:$("admin-quiz-form-id").value.trim()||null,is_published:$("admin-quiz-published").checked};
   const res=id?await db.from("quizzes").update(row).eq("id",id):await db.from("quizzes").insert(row);
   message("admin-quiz-message",res.error?res.error.message:"Quiz saved.",!!res.error);if(!res.error){clearAdminForm("quiz");await loadAdminLists();await loadContent()}
 };
@@ -2045,6 +2204,7 @@ $("admin-quiz-bulk-form").addEventListener("submit",async e=>{
   if(!selected.length){message("bulk-quiz-message","Select at least one course.",true);return}
   const rows=selected.map(row=>({
     course:row.dataset.course,title:row.querySelector('[data-field="title"]').value.trim(),description:null,
+    topics:parseQuizTopics(row.querySelector('[data-field="topics"]').value),
     difficulty:$("bulk-quiz-difficulty").value,google_form_url:row.querySelector('[data-field="url"]').value.trim(),
     google_form_id:row.querySelector('[data-field="form-id"]').value.trim()||null,is_published:$("bulk-quiz-published").checked
   }));
@@ -2219,7 +2379,7 @@ $("page-admin").addEventListener("click",async e=>{
   const edit=e.target.closest("[data-edit]"),toggle=e.target.closest("[data-toggle]"),del=e.target.closest("[data-delete]");
   if(edit){
     const quiz=edit.dataset.edit==="quiz",row=(quiz?adminQuizzes:adminResources).find(x=>String(x.id)===edit.dataset.id);if(!row)return;
-    if(quiz){$("admin-quiz-id").value=row.id;$("admin-quiz-course").value=row.course;$("admin-quiz-title").value=row.title;$("admin-quiz-description").value=row.description||"";$("admin-quiz-difficulty").value=row.difficulty||"Practice";$("admin-quiz-url").value=row.google_form_url;$("admin-quiz-form-id").value=row.google_form_id||"";$("admin-quiz-published").checked=row.is_published;$("admin-quiz-heading").textContent="Edit quiz";$("admin-quiz-form").scrollIntoView({behavior:"smooth"})}
+    if(quiz){$("admin-quiz-id").value=row.id;$("admin-quiz-course").value=row.course;$("admin-quiz-title").value=row.title;$("admin-quiz-description").value=row.description||"";$("admin-quiz-topics").value=Array.isArray(row.topics)?row.topics.join(", "):"";$("admin-quiz-difficulty").value=row.difficulty||"Practice";$("admin-quiz-url").value=row.google_form_url;$("admin-quiz-form-id").value=row.google_form_id||"";$("admin-quiz-published").checked=row.is_published;$("admin-quiz-heading").textContent="Edit quiz";$("admin-quiz-form").scrollIntoView({behavior:"smooth"})}
     else{$("admin-resource-id").value=row.id;$("admin-resource-course").value=row.course;$("admin-resource-title").value=row.title;$("admin-resource-description").value=row.description||"";$("admin-resource-type").value=row.resource_type;$("admin-resource-url").value=row.resource_type==="textbook"?"":row.url||"";$("admin-resource-drive-url").value=row.resource_type==="textbook"?row.url||"":"";$("admin-resource-file-help").textContent=row.storage_path?`Current document: ${row.storage_path.split("/").pop()}. Leave empty to keep it, or select a replacement.`:"PDF, Word, PowerPoint or text documents up to 50 MB. Videos should be added as links.";$("admin-resource-published").checked=row.is_published;$("admin-resource-heading").textContent="Edit resource";$("admin-resource-form").scrollIntoView({behavior:"smooth"})}
   }
   if(toggle){const type=toggle.dataset.toggle,table=type==="quiz"?"quizzes":"resources",rows=type==="quiz"?adminQuizzes:adminResources,row=rows.find(x=>String(x.id)===toggle.dataset.id);if(!row)return;

@@ -10,6 +10,8 @@ This is the main MedStudy Hub website. It contains the student experience and th
 - Google Forms quiz links.
 - Notes, textbook/reference and YouTube resource library.
 - Personal results history and course performance chart.
+- Quiz search and course/topic/difficulty filters, with per-account quiz favorites.
+- Course-level review recommendations, a weekly quiz target and CSV/printable progress reports.
 - Practice-score entry for private tracking.
 - Achievements based on practice activity.
 - Overall, course, weekly, most-improved and recent-activity leaderboards.
@@ -57,7 +59,7 @@ The package includes:
 - `google-apps-script/MedStudy_Form_Score_Import.gs`
 - `supabase/functions/import-google-form-score/index.ts`
 
-The Google Apps Script sends scored form submissions to a Supabase Edge Function. The Edge Function checks a shared secret, matches the respondent email to a MedStudy Hub account, and inserts a verified score. The service-role key stays on the server.
+The Google Apps Script sends scored form submissions, including each graded question, the student's answer, points and configured feedback, to a Supabase Edge Function. The Edge Function checks a shared secret, matches the respondent email to a MedStudy Hub account, and records the first attempt for a course and quiz title as verified. Later submissions for that same quiz are kept in the student's results as unverified. The private answer review is saved with each attempt. The service-role key stays on the server.
 
 **Important:** You must configure and deploy the Google Apps Script and Edge Function for this integration to work. A Google Form must be configured as a quiz, have points assigned, and collect respondent email addresses. Manual score entries remain private and are excluded from official group rankings.
 
@@ -75,7 +77,7 @@ The Google Apps Script sends scored form submissions to a Supabase Edge Function
 6. Open the supplied `schema.sql`, copy the entire file, paste it into the SQL Editor and click **Run**.
 7. Confirm that the query completes without an error.
 
-If you previously used an earlier MedStudy Hub database, back it up first, then run this updated `schema.sql` in the SQL Editor. It adds profile settings and activity-reset markers, the user study-streak table/functions, user/admin study-data reset functions, the notification-centre reset marker/function, resource storage path, private document bucket, admin-controlled notifications, class timetable, MB exam, feature settings, group-chat presence/audio storage and user-activity tables, plus weekly chat cleanup and a verified-score group average in the admin overview, while keeping existing quiz/resource/attempt rows. Review any custom policies you previously created. To update an existing database's leaderboard rules only, run `supabase/fix_leaderboard_eligibility.sql` in the SQL Editor.
+If you previously used an earlier MedStudy Hub database, back it up first, then run this updated `schema.sql` in the SQL Editor. It adds profile settings and activity-reset markers, quiz topics, the user study-streak table/functions, user/admin study-data reset functions, the notification-centre reset marker/function, resource storage path, private document bucket, admin-controlled notifications, class timetable, MB exam, feature settings, group-chat presence/audio storage and user-activity tables, plus weekly chat cleanup and a verified-score group average in the admin overview, while keeping existing quiz/resource/attempt rows. Review any custom policies you previously created. To update an existing database's leaderboard rules only, run `supabase/fix_leaderboard_eligibility.sql` in the SQL Editor.
 
 ## Part 2 — Configure the website
 
@@ -170,7 +172,10 @@ To appoint another administrator, repeat the SQL insert using that person's regi
 3. Assign points to each question and enable **Collect email addresses**.
 4. Copy the responder URL.
 5. In MedStudy Hub → Admin dashboard, add the course, title, description, responder URL and (optionally) the Google Form ID. To add quizzes for multiple courses in one operation, use **Create quizzes for multiple courses** and enter a separate title and form link for each selected course.
-6. Publish the quiz when ready.
+6. Add comma-separated topics when editing or creating the quiz; students can filter and search using these tags.
+7. Publish the quiz when ready.
+
+Students can save quizzes as favorites, set a weekly quiz target, review course averages and suggested focus areas, and download a CSV or print a personal progress report from Results & progress.
 
 ### Resources
 1. In Admin dashboard → Add a resource, choose the course and resource type, and enter a title.
@@ -239,7 +244,9 @@ You need the Supabase CLI installed and logged in. In a terminal, from the proje
    supabase functions deploy import-google-form-score --no-verify-jwt
    ```
 
-5. Your function URL is:
+5. Apply the latest `schema.sql` in the Supabase SQL Editor so `quiz_attempts` has the `answer_summary` column.
+
+6. Your function URL is:
 
    `https://YOUR_PROJECT_REF.supabase.co/functions/v1/import-google-form-score`
 
@@ -264,9 +271,9 @@ For each Google Forms quiz:
 7. In the function dropdown, select `installSubmitTrigger` and click Run.
 8. Approve Google's requested permissions.
 9. Submit a test response using an email address that already has a MedStudy Hub account.
-10. Check Supabase → Table Editor → `quiz_attempts`. The inserted row should have `is_verified = true` and `source = google_forms`.
+10. Check Supabase → Table Editor → `quiz_attempts`. The first submission for a course and quiz title should have `is_verified = true`, `source = google_forms` and an `answer_summary` array. Further submissions for the same quiz title and course are saved with `is_verified = false`. The portal displays each breakdown under Results & progress → My recent results → Question review.
 
-Repeat the Apps Script setup for each separate Google Form. The Google Form respondent email must match the email on the student's MedStudy Hub account. The script imports only graded quiz responses with a non-zero total point value. If a student uses an email that does not match an account, the import will fail rather than crediting another person.
+Repeat the Apps Script setup for each separate Google Form. The Google Form respondent email must match the email on the student's MedStudy Hub account. The script imports graded quiz responses with a non-zero total point value. If a student uses an email that does not match an account, the import will fail rather than crediting another person. Quiz matching uses the normalized course and title, so use a distinct title when creating a different quiz in the same course. Existing score records do not contain question-level details; reviews are available for submissions received after this updated integration is installed.
 
 **Privacy note:** Tell students that their Google Forms respondent email is used to match their quiz score to their MedStudy Hub account. Restrict access to the Google Forms response sheet to trusted administrators.
 
@@ -302,7 +309,7 @@ You can use a static hosting provider such as Netlify, Vercel or Cloudflare Page
 - **Personal preferences:** Theme, regional formatting, notifications, privacy and accessibility preferences are stored on the user's own profile. The study streak is stored per user and is not public.
 - **Resume state:** The last visited section is stored locally per signed-in account and expires after 30 minutes.
 - **Manual scores:** Manual practice scores are unverified, visible only to the student, and excluded from shared rankings.
-- **Verified scores:** The Apps Script integration sends scored quiz responses to a server-side function. The server checks a shared secret, maps the collected respondent email to a MedStudy account and writes the verified attempt. A unique response ID prevents duplicate imports.
+- **Verified scores:** The Apps Script integration sends scored quiz responses to a server-side function. The server checks a shared secret, maps the collected respondent email to a MedStudy account and records only the first Google Forms attempt for a course and quiz title as verified. Later attempts remain in the student's history but are excluded from shared rankings. A unique response ID prevents duplicate imports.
 - **Service-role key:** Never put this key in `app.js`, HTML, CSS, GitHub, or any public repository. It belongs only in trusted server-side environments.
 - **Account deletion:** The delete-account Edge Function uses the authenticated user's token and deletes only that user's account.
 - **User management:** The admin-user-management Edge Function verifies the signed-in user and admin membership before listing/inviting accounts or changing access. Admin accounts cannot be banned or deleted through the panel.
