@@ -12,6 +12,8 @@ create table if not exists public.profiles (
   leaderboard_opt_in boolean not null default false,
   theme_color text not null default '#087f8c' check (theme_color ~ '^#[0-9A-Fa-f]{6}$'),
   class_name text,
+  medical_school text,
+  specialty_interest text,
   favorite_subject text,
   quiz_rank text,
   activity_reset_at timestamptz not null default 'epoch',
@@ -22,6 +24,8 @@ alter table public.profiles add column if not exists display_name text;
 alter table public.profiles add column if not exists leaderboard_opt_in boolean not null default false;
 alter table public.profiles add column if not exists theme_color text not null default '#087f8c' check (theme_color ~ '^#[0-9A-Fa-f]{6}$');
 alter table public.profiles add column if not exists class_name text;
+alter table public.profiles add column if not exists medical_school text;
+alter table public.profiles add column if not exists specialty_interest text;
 alter table public.profiles add column if not exists favorite_subject text;
 alter table public.profiles add column if not exists quiz_rank text;
 alter table public.profiles add column if not exists activity_reset_at timestamptz not null default 'epoch';
@@ -588,6 +592,23 @@ values(
   array['audio/webm','audio/ogg','audio/mp4','audio/wav']
 )
 on conflict(id) do update set public=false,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+values('profile-photos','profile-photos',true,524288,
+       array['image/webp'])
+on conflict(id) do update set public=true,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
+drop policy if exists "Users read own profile photos" on storage.objects;
+create policy "Users read own profile photos" on storage.objects for select to authenticated
+using (bucket_id='profile-photos' and (storage.foldername(name))[1]=auth.uid()::text);
+drop policy if exists "Users upload own profile photos" on storage.objects;
+create policy "Users upload own profile photos" on storage.objects for insert to authenticated
+with check (bucket_id='profile-photos' and (storage.foldername(name))[1]=auth.uid()::text);
+drop policy if exists "Users update own profile photos" on storage.objects;
+create policy "Users update own profile photos" on storage.objects for update to authenticated
+using (bucket_id='profile-photos' and (storage.foldername(name))[1]=auth.uid()::text)
+with check (bucket_id='profile-photos' and (storage.foldername(name))[1]=auth.uid()::text);
+drop policy if exists "Users remove own profile photos" on storage.objects;
+create policy "Users remove own profile photos" on storage.objects for delete to authenticated
+using (bucket_id='profile-photos' and (storage.foldername(name))[1]=auth.uid()::text);
 drop policy if exists "Users upload own group chat audio" on storage.objects;
 create policy "Users upload own group chat audio" on storage.objects for insert to authenticated
 with check (

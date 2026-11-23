@@ -17,8 +17,15 @@ This is the main MedStudy Hub website. It contains the student experience and th
 - Overall, course, weekly, most-improved and recent-activity leaderboards.
 - Display name and leaderboard opt-in controls.
 - Per-account website accent colour selection.
-- Personal class/year, favourite subject and optional quiz-rank details.
-- A top-bar profile shortcut with display name and initials.
+- Medical-school, year-of-study, specialty-interest, favourite-course and optional quiz-rank details.
+- A responsive medical-student profile with study metrics, saved resources, study-group access and a photo-backed global avatar.
+- Profile photos compressed to WebP and stored in the public `profile-photos` Supabase Storage bucket, with a browser-local fallback for local testing.
+- Profile preference to show or hide the photo in the profile header banner while keeping the avatar photo enabled.
+- Saved study resources synced to the signed-in profile.
+- Recently opened quizzes and resources with account-synced links to reopen them; Google Forms controls whether an in-progress answer draft can resume.
+- A configurable focus timer with pause/reset and an optional five-minute break.
+- Private, account-synced notes attached to saved resources.
+- Home dashboard section visibility preferences in **Settings → Appearance**, synced across devices.
 - A theme-coloured left navigation drawer and a right-side settings drawer, with the admin dashboard shown to admins.
 - Account, appearance, notification, privacy/security and motion/visual preferences, including dark mode, region/time-zone formatting, quiet hours, activity consent and sign-out of other devices.
 - Responsive navigation and settings drawers with reduced-motion and color-vision palette options.
@@ -32,7 +39,7 @@ This is the main MedStudy Hub website. It contains the student experience and th
 - Users can permanently reset their own activity, active-time totals, streak and quiz results; admins can reset those records for all users with a typed confirmation. Profiles, accounts and course content are kept.
 - Admins can clear shared announcements and request clearing saved class/exam reminders for all users; browser-local reminders are removed the next time each user's notification centre syncs.
 - Admin switches for classes, exams, chat, quizzes, resources, leaderboards, manual scores, announcements and schedule/phone alerts.
-- Optional native phone notifications for class start/end, with per-device permission and opt-in.
+- Optional native phone notifications for class start/end while the hub is open, with per-browser permission and opt-in. Web notifications cannot bypass browser/OS permission; closed-app delivery requires a separately configured Web Push service.
 - A Monday–Friday class timetable with lecturer and live class status.
 - Admin-managed MB exam periods with Viva, MCQ or Theory type and countdown reminders.
 - Class start/end and 30-day, 7-day and 1-day exam reminders in the in-app notification centre.
@@ -77,7 +84,9 @@ The Google Apps Script sends scored form submissions, including each graded ques
 6. Open the supplied `schema.sql`, copy the entire file, paste it into the SQL Editor and click **Run**.
 7. Confirm that the query completes without an error.
 
-If you previously used an earlier MedStudy Hub database, back it up first, then run this updated `schema.sql` in the SQL Editor. It adds profile settings and activity-reset markers, quiz topics, the user study-streak table/functions, user/admin study-data reset functions, the notification-centre reset marker/function, resource storage path, private document bucket, admin-controlled notifications, class timetable, MB exam, feature settings, group-chat presence/audio storage and user-activity tables, plus weekly chat cleanup and a verified-score group average in the admin overview, while keeping existing quiz/resource/attempt rows. Review any custom policies you previously created. To update an existing database's leaderboard rules only, run `supabase/fix_leaderboard_eligibility.sql` in the SQL Editor.
+The profile-picture upload and medical academic details require this latest schema. Profile photos are resized to a 512 × 512 WebP image and uploaded to Supabase Storage; the profile form shows upload progress and completion. If Supabase is not configured, the same compressed image can be stored locally for development. Public-bucket URLs make uploaded profile photos visible wherever a member's avatar is shown.
+
+If you previously used an earlier MedStudy Hub database, back it up first, then run this updated `schema.sql` in the SQL Editor. It adds profile settings, medical-school and specialty-interest fields, profile-photo Storage and its per-user upload policies, activity-reset markers, quiz topics, the user study-streak table/functions, user/admin study-data reset functions, the notification-centre reset marker/function, resource storage path, private document bucket, admin-controlled notifications, class timetable, MB exam, feature settings, group-chat presence/audio storage and user-activity tables, plus weekly chat cleanup and a verified-score group average in the admin overview, while keeping existing quiz/resource/attempt rows. The `profile-photos` bucket is public so avatar images can appear in the signed-in hub; users can only upload, replace or remove files in their own user-ID folder. Review any custom policies you previously created. To update an existing database's leaderboard rules only, run `supabase/fix_leaderboard_eligibility.sql` in the SQL Editor.
 
 ## Part 2 — Configure the website
 
@@ -138,7 +147,7 @@ No Content Security Policy (CSP) header or policy is configured in this project.
 
 ### Settings, privacy and daily streaks
 
-The menu at the top left opens the theme-coloured navigation drawer. The gear beside the profile opens Settings from the right; admins also see an Admin dashboard shortcut there. Settings cover profile access, language/English regional formatting, time zone and preferred study region; light/dark mode, accent, density and text size; announcement/reminder preferences, quiet hours and popup limits; privacy consent, password reset and signing out other devices; and reduced motion, contrast and color-vision palettes. The language preference changes regional formatting; the interface labels are currently English. Preferred region does not change course access. Embedded-video autoplay control is ready for future embedded media; current video resources open only when selected.
+The menu at the top left opens the theme-coloured navigation drawer. The gear beside the profile opens Settings from the right; admins also see an Admin dashboard shortcut there. Settings cover profile access, language/English regional formatting, time zone and preferred study region; light/dark mode, accent, density, text size and home dashboard section visibility; announcement/reminder preferences, quiet hours and popup limits; privacy consent, password reset and signing out other devices; and reduced motion, contrast and color-vision palettes. The language preference changes regional formatting; the interface labels are currently English. Preferred region does not change course access. Embedded-video autoplay control is ready for future embedded media; current video resources open only when selected.
 
 Most settings are saved to the signed-in profile and sync across devices. If the `preferences` column is missing, other preferences stay on the current browser, while accent colour and leaderboard consent still use the legacy profile fields; the site displays a schema-update notice. The streak records one visit per calendar day in the selected time zone and resets after a missed day. It is stored in Supabase and shown in an animated daily welcome and in detail on Results & Progress. The activity-report consent toggle stops future sign-in, page-view and active-time reporting when disabled; it does not erase older records. **Reset my study data** permanently deletes your activity events, active-time totals, study streak and quiz results, but keeps your profile, account and course content. Admins can perform the same reset for all users from the Admin dashboard. Other devices clear their locally saved active-time totals when they next sync their profile. In the Admin dashboard, **Clear notification centres** removes all shared announcements and marks saved class/exam reminders for clearing the next time each user's notification centre syncs. The account page contains the existing permanent-deletion action. The device panel identifies the current browser and can sign out other sessions; it does not provide a per-device session inventory.
 
@@ -203,7 +212,7 @@ Expired audio files are removed when chat is opened and the cleanup function run
 ### Classes and MB exams
 In **Admin dashboard**, use **Set up class timetable** to add weekday classes with their course, lecture title, lecturer, and start/end times. Use **Set up MB exam periods** to add the exam name, course, Viva/MCQ/Theory type, and start/end date and time. Students see the weekday timetable, the current class status, and a countdown to each upcoming exam under **Classes / exams**.
 
-When the portal is open, class start/end notices and exam reminders one month, one week, and one day before the exam appear as page popups and in the notification centre. Class notices catch up for classes scheduled earlier that day when the signed-in app is opened. Students can opt in to phone notifications for class start/end in **Classes / exams**; the browser/phone must grant notification permission. These native alerts are checked while the signed-in app is open. Delivery while the app is fully closed requires a separate Web Push service and server credentials, which are not included. In-app schedule reminders are retained in the current browser profile for up to 14 days and are not synchronized between devices.
+When the portal is open, class start/end notices and exam reminders one month, one week, and one day before the exam appear as page popups and in the notification centre. Class notices catch up for classes scheduled earlier that day when the signed-in app is opened, then clear at local midnight. Exam reminders remain in the current browser profile for up to 14 days; schedule reminders are not synchronized between devices. Students can opt in to phone notifications for class start/end in **Classes / exams**; the browser/phone must grant notification permission and retain this site's data. These native alerts are checked while the signed-in app is open. Browser and operating-system notification controls cannot be bypassed. Delivery while the app is fully closed requires a separately configured Web Push service and server credentials, which are not included.
 
 Admins can toggle each activity in **Admin dashboard → Activity and notification controls**. Access is backed by feature settings and database policies where applicable; turning a feature off hides or blocks it for students while preserving the admin's ability to manage its content.
 

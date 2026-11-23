@@ -8,6 +8,10 @@ const configured = !SUPABASE_URL.startsWith("YOUR_") && !SUPABASE_ANON_KEY.start
 const db = configured && window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY,{global:{fetch:networkAwareFetch}}) : null;
 const COURSES = ["Biochemistry","Histology","Physiology","Embryology","Gross Anatomy"];
 const DEFAULT_THEME_COLOR = "#087f8c";
+const PROFILE_PHOTO_BUCKET = "profile-photos";
+const PROFILE_PHOTO_MAX_INPUT_BYTES = 10 * 1024 * 1024;
+const PROFILE_PHOTO_MAX_BYTES = 512 * 1024;
+const PROFILE_PHOTO_MAX_DIMENSION = 512;
 const PAGE_STATE_TTL = 30 * 60 * 1000;
 const DOCUMENT_BUCKET = "study-documents";
 const NOTIFICATION_TTL_DAYS = 14;
@@ -29,13 +33,14 @@ const FEATURE_OPTIONS = [
 const DEFAULT_USER_PREFERENCES={
   language:"system",timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC",region:"global",
   darkMode:false,density:"comfortable",textSize:"medium",reduceMotion:false,noAutoplay:true,
-  highContrast:false,colorVision:"none",announcementAlerts:true,scheduleAlerts:true,quizFavorites:[],weeklyQuizGoal:3,
-  quietHours:false,quietStart:"22:00",quietEnd:"07:00",dailyPopupLimit:6,activityConsent:true
+  highContrast:false,colorVision:"none",announcementAlerts:true,scheduleAlerts:true,quizFavorites:[],savedResourceIds:[],recentItems:[],resourceNotes:{},
+  homeSections:{profile:true,tasks:true,focus:true,recent:true,leaderboard:true,courses:true,quickstart:true},focusDurationMinutes:25,weeklyQuizGoal:3,
+  quietHours:false,quietStart:"22:00",quietEnd:"07:00",dailyPopupLimit:6,activityConsent:true,profileBannerPhoto:true
 };
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const loadingMessage = text => `<p class="muted loading-inline skeleton-loading" role="status" aria-live="polite"><span class="sr-only">${esc(text)}</span><span class="skeleton-line"></span><span class="skeleton-line skeleton-line-short"></span></p>`;
-let currentUser=null,isAdmin=false,activityResetSyncAvailable=false,authMode="login",quizzes=[],resources=[],adminQuizzes=[],adminResources=[],attempts=[],notifications=[],calendarNotifications=[],classSessions=[],mbExams=[],groupChatMessages=[],groupChatPresence=[],featureSettings=Object.fromEntries(FEATURE_OPTIONS.map(([key])=>[key,true])),userPreferences={...DEFAULT_USER_PREFERENCES},studyStreak={current:0,longest:0,lastActiveDate:null,syncStatus:""},studyTasks=[],studyTasksAvailable=true,streakCheckPending=false,queuedLiveNotices=[],scheduleDataLoaded=false,scheduleLoadError=null,notificationReadIds=new Set(),notificationRefreshTimer=null,chatRefreshTimer=null,chatHeartbeatTimer=null,chatTypingTimer=null,chatRecorder=null,chatRecordingStream=null,chatRecordingChunks=[],chatRecordingBlob=null,chatRecordingUrl=null,chatRecordingTimer=null,chatRecordingStartedAt=0,chatRecordingCancelled=false,chatAudioUrlCache=new Map(),activeBoard="overall",chart=null,resourceRenderId=0,activeTimetableDay=0,liveNoticeTimer=null,usageTimer=null,usageLastTick=null,activityPendingSeconds=0,activityLoggingUnavailable=false,adminUserRows=[],adminUserPage=1,adminUsersHaveMore=false,toastTimer=null,sessionExpiryTimer=null,sessionExpiryInProgress=false,fallbackSessionStartedAt=null,fallbackSessionUserId=null;
+let currentUser=null,isAdmin=false,activityResetSyncAvailable=false,profileAcademicFieldsAvailable=true,authMode="login",quizzes=[],resources=[],adminQuizzes=[],adminResources=[],attempts=[],notifications=[],calendarNotifications=[],classSessions=[],mbExams=[],groupChatMessages=[],groupChatPresence=[],featureSettings=Object.fromEntries(FEATURE_OPTIONS.map(([key])=>[key,true])),userPreferences={...DEFAULT_USER_PREFERENCES},studyStreak={current:0,longest:0,lastActiveDate:null,syncStatus:""},studyTasks=[],studyTasksAvailable=true,streakCheckPending=false,queuedLiveNotices=[],scheduleDataLoaded=false,scheduleLoadError=null,notificationReadIds=new Set(),notificationRefreshTimer=null,chatRefreshTimer=null,chatHeartbeatTimer=null,chatTypingTimer=null,chatRecorder=null,chatRecordingStream=null,chatRecordingChunks=[],chatRecordingBlob=null,chatRecordingUrl=null,chatRecordingTimer=null,chatRecordingStartedAt=0,chatRecordingCancelled=false,chatAudioUrlCache=new Map(),activeBoard="overall",chart=null,resourceRenderId=0,recentRenderId=0,focusTimerInterval=null,focusEndsAt=0,focusRemainingSeconds=0,focusTimerPhase="focus",focusSessionStarted=false,activeTimetableDay=0,liveNoticeTimer=null,usageTimer=null,usageLastTick=null,activityPendingSeconds=0,activityLoggingUnavailable=false,adminUserRows=[],adminUserPage=1,adminUsersHaveMore=false,toastTimer=null,sessionExpiryTimer=null,sessionExpiryInProgress=false,fallbackSessionStartedAt=null,fallbackSessionUserId=null,profilePhotoFallback=null;
 const CHAT_AUDIO_BUCKET="group-chat-audio";
 const CHAT_MAX_VOICE_SECONDS=60;
 const CHAT_MAX_VOICE_BYTES=5*1024*1024;
@@ -126,8 +131,20 @@ function sanitizeUserPreferences(saved={}){
   merged.quizFavorites=Array.isArray(merged.quizFavorites)
     ?[...new Set(merged.quizFavorites.filter(id=>/^\d+$/.test(String(id))).map(String))].slice(0,500)
     :[];
+  merged.savedResourceIds=Array.isArray(merged.savedResourceIds)
+    ?[...new Set(merged.savedResourceIds.filter(id=>/^\d+$/.test(String(id))).map(String))].slice(0,500)
+    :[];
+  merged.recentItems=Array.isArray(merged.recentItems)
+    ?merged.recentItems.filter(item=>item&&["quiz","resource"].includes(item.kind)&&/^\d+$/.test(String(item.id))&&Number.isFinite(Date.parse(item.visitedAt)))
+      .slice(0,8).map(item=>({kind:item.kind,id:String(item.id),visitedAt:item.visitedAt}))
+    :[];
+  const resourceNotes=merged.resourceNotes&&typeof merged.resourceNotes==="object"&&!Array.isArray(merged.resourceNotes)?merged.resourceNotes:{};
+  merged.resourceNotes=Object.fromEntries(Object.entries(resourceNotes).filter(([id,note])=>/^\d+$/.test(id)&&typeof note==="string").slice(0,50).map(([id,note])=>[id,note.slice(0,2000)]));
+  const homeSections=merged.homeSections&&typeof merged.homeSections==="object"&&!Array.isArray(merged.homeSections)?merged.homeSections:{};
+  merged.homeSections=Object.fromEntries(Object.keys(DEFAULT_USER_PREFERENCES.homeSections).map(key=>[key,homeSections[key]!==false]));
+  merged.focusDurationMinutes=Math.max(1,Math.min(180,Number.parseInt(merged.focusDurationMinutes,10)||25));
   merged.weeklyQuizGoal=Math.max(1,Math.min(20,Number.parseInt(merged.weeklyQuizGoal,10)||3));
-  ["darkMode","reduceMotion","noAutoplay","highContrast","announcementAlerts","scheduleAlerts","quietHours","activityConsent"].forEach(key=>merged[key]=merged[key]!==false&&merged[key]!==0);
+  ["darkMode","reduceMotion","noAutoplay","highContrast","announcementAlerts","scheduleAlerts","quietHours","activityConsent","profileBannerPhoto"].forEach(key=>merged[key]=merged[key]!==false&&merged[key]!==0);
   return merged;
 }
 function loadUserPreferences(){
@@ -178,7 +195,23 @@ function applyUserPreferences(){
   body.classList.toggle("reduce-motion",userPreferences.reduceMotion);
   body.classList.toggle("high-contrast",userPreferences.highContrast);
   body.dataset.colorVision=userPreferences.colorVision;
+  renderHomeSectionOptions();
+  applyHomeSectionPreferences();
+  if($("focus-duration"))$("focus-duration").value=String(userPreferences.focusDurationMinutes);
   renderNotifications();
+}
+function renderHomeSectionOptions(){
+  document.querySelectorAll("[data-home-section-toggle]").forEach(input=>{
+    input.checked=userPreferences.homeSections[input.dataset.homeSectionToggle]!==false;
+  });
+}
+function applyHomeSectionPreferences(){
+  document.querySelectorAll("[data-home-section]").forEach(section=>{
+    const key=section.dataset.homeSection;
+    section.hidden=userPreferences.homeSections[key]===false||
+      (key==="leaderboard"&&!featureEnabled("leaderboards"))||
+      (key==="courses"&&!featureEnabled("quizzes"));
+  });
 }
 function fillSettingsForm(){
   $("settings-language").value=userPreferences.language;
@@ -242,6 +275,7 @@ function sentClassPhoneAlertsKey(){return currentUser?"medstudy:sent-phone-class
 function weekdayIndex(date=new Date()){const index=(date.getDay()+6)%7;return index>4?0:index}
 function dayNumber(date=new Date()){const day=date.getDay();return day===0?7:day}
 function localDateKey(date=new Date()){return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`}
+function localEndOfDay(date=new Date()){return new Date(date.getFullYear(),date.getMonth(),date.getDate()+1).toISOString()}
 function formatTime(value){
   if(!value)return "";
   const [hours,minutes]=value.split(":").map(Number),date=new Date();
@@ -345,14 +379,24 @@ function flushActivityTime(final=false){
   }
   return Promise.all(writes);
 }
+function calendarNoticeIsCurrent(item,now=new Date()){
+  const nowMs=now.getTime(),createdAt=new Date(item?.created_at).getTime(),expiresAt=new Date(item?.expires_at).getTime();
+  const classDate=/^class-.+-(\d{4}-\d{2}-\d{2})-(?:start|end)$/.exec(String(item?.id||""));
+  return !!item?.id&&Number.isFinite(createdAt)&&createdAt<=nowMs&&nowMs-createdAt<=NOTIFICATION_TTL_DAYS*DAY_MILLISECONDS&&
+    (!item.expires_at||Number.isFinite(expiresAt)&&expiresAt>nowMs)&&(!classDate||classDate[1]===localDateKey(now));
+}
+function pruneExpiredCalendarNotices(now=new Date()){
+  const active=calendarNotifications.filter(item=>calendarNoticeIsCurrent(item,now));
+  if(active.length===calendarNotifications.length)return false;
+  calendarNotifications=active;saveCalendarNotices();return true;
+}
 function loadCalendarNotices(){
   try{
     const saved=JSON.parse(localStorage.getItem(calendarNoticeKey())||"[]");
     const resetAt=Number(localStorage.getItem(notificationResetMarkerKey())||0),dismissed=loadDismissedCalendarNoticeIds();
-    calendarNotifications=Array.isArray(saved)?saved.filter(item=>{
-      const createdAt=new Date(item?.created_at).getTime();
-      return item&&item.id&&Number.isFinite(createdAt)&&createdAt>resetAt&&Date.now()-createdAt<=NOTIFICATION_TTL_DAYS*DAY_MILLISECONDS&&!dismissed.has(String(item.id));
-    }):[];
+    const stored=Array.isArray(saved)?saved:[];
+    calendarNotifications=stored.filter(item=>new Date(item?.created_at).getTime()>resetAt&&calendarNoticeIsCurrent(item)&&!dismissed.has(String(item.id)));
+    if(calendarNotifications.length!==stored.length)saveCalendarNotices();
   }catch(error){console.warn("Could not load class and exam reminders.",error);calendarNotifications=[]}
 }
 function saveCalendarNotices(){
@@ -361,6 +405,7 @@ function saveCalendarNotices(){
 }
 function featureEnabled(key){return featureSettings[key]!==false}
 function allNotifications(){
+  pruneExpiredCalendarNotices();
   const announcements=featureEnabled("announcements")&&userPreferences.announcementAlerts?notifications:[];
   const reminders=featureEnabled("schedule_reminders")&&userPreferences.scheduleAlerts?calendarNotifications:[];
   return [...announcements,...reminders].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -459,10 +504,10 @@ window.addEventListener("focus",()=>{
   if(currentUser&&Date.now()-getSessionStartedAt(currentUser.id)>=SESSION_MAX_AGE)void expireAuthSession();
   else if(currentUser)void syncActivityResetMarker(true);
 });
-function addCalendarNotice(id,title,body){
+function addCalendarNotice(id,title,body,expiresAt){
   if(calendarNotifications.some(item=>item.id===id)||loadDismissedCalendarNoticeIds().has(String(id)))return;
   const created_at=new Date().toISOString();
-  calendarNotifications.unshift({id,title,body,created_at,expires_at:new Date(Date.now()+NOTIFICATION_TTL_DAYS*DAY_MILLISECONDS).toISOString()});
+  calendarNotifications.unshift({id,title,body,created_at,expires_at:expiresAt||new Date(Date.now()+NOTIFICATION_TTL_DAYS*DAY_MILLISECONDS).toISOString()});
   calendarNotifications=calendarNotifications.slice(0,100);
   saveCalendarNotices();renderNotifications();
   if(currentUser&&allowSchedulePopup())showLiveNotice(title,body);
@@ -499,6 +544,7 @@ function renderStudyStreak(){
   $("streak-progress-fill").style.width=`${progress/7*100}%`;
   $("streak-progress").querySelector('[role="progressbar"]').setAttribute("aria-valuenow",String(progress));
   $("streak-sync-status").textContent=studyStreak.syncStatus;
+  renderProfileMetrics();
 }
 function recordLocalStudyDay(){
   const today=localDateKeyInZone(),key=studyStreakCacheKey();
@@ -561,10 +607,8 @@ async function showPhoneClassNotice(id,title,body){
     pendingPhoneAlerts.add(id);
     const options={body,tag:id,icon:"./icon-192.png",badge:"./icon-192.png"};
     try{
-      if("serviceWorker" in navigator&&window.isSecureContext){
-        const registration=await navigator.serviceWorker.ready;
-        await registration.showNotification(title,options);
-      }else new Notification(title,options);
+      const notification=new Notification(title,options);
+      notification.onclick=()=>{window.focus();showPage("classes");notification.close()};
       sent.add(id);localStorage.setItem(sentClassPhoneAlertsKey(),JSON.stringify([...sent].slice(-100)));
     }finally{pendingPhoneAlerts.delete(id)}
   }catch(error){console.warn("Could not send a phone class notification.",error)}
@@ -578,8 +622,8 @@ function updateClassNotificationControls(){
   $("class-notification-status").textContent=!enabled?"Phone alerts are disabled by the administrator."
     :!("Notification" in window)?"This browser does not support phone notifications."
     :!window.isSecureContext?"Phone notifications require a secure (HTTPS) connection."
-    :Notification.permission==="denied"?"Notifications are blocked in browser settings."
-    :optedIn?"Alerts are enabled while MedStudy Hub is open; browser background settings may delay them.":"Allow notifications to receive class start/end alerts.";
+    :Notification.permission==="denied"?"Notifications are blocked by your browser or operating system. Allow them for this site in browser settings; MedStudy Hub cannot bypass that."
+    :optedIn?"Alerts are enabled on this browser while MedStudy Hub is open. Closed-app delivery requires Web Push.":"Allow notifications to receive class start/end alerts while the hub is open.";
 }
 function phoneClassAlertsEnabled(){
   try{return featureEnabled("phone_class_notifications")&&localStorage.getItem(classPhoneAlertsKey())==="true"}
@@ -587,7 +631,6 @@ function phoneClassAlertsEnabled(){
 }
 async function toggleClassPhoneNotifications(){
   if(!featureEnabled("phone_class_notifications"))return;
-  let preferenceSaved=false;
   try{
     if(localStorage.getItem(classPhoneAlertsKey())==="true"){
       localStorage.removeItem(classPhoneAlertsKey());updateClassNotificationControls();return;
@@ -595,19 +638,17 @@ async function toggleClassPhoneNotifications(){
     if(!("Notification" in window)){message("class-notification-status","This browser does not support phone notifications.",true);return}
     if(!window.isSecureContext){message("class-notification-status","Phone notifications require a secure (HTTPS) connection.",true);return}
     const permission=Notification.permission==="granted"? "granted" : await Notification.requestPermission();
-    if(permission!=="granted"){message("class-notification-status","Notification permission was not granted. Change it in your browser or phone settings.",true);return}
+    if(permission!=="granted"){message("class-notification-status","Notification permission was not granted. Allow notifications for this site in browser or phone settings, then try again.",true);return}
     localStorage.setItem(classPhoneAlertsKey(),"true");
-    preferenceSaved=true;
-    if("serviceWorker" in navigator&&window.isSecureContext){
-      const registration=await navigator.serviceWorker.ready;
-      await registration.showNotification("Class alerts enabled",{body:"You will be notified when a scheduled class starts or ends while MedStudy Hub is open.",icon:"./icon-192.png"});
-    }else new Notification("Class alerts enabled",{body:"You will be notified when a scheduled class starts or ends while MedStudy Hub is open.",icon:"./icon-192.png"});
-    preferenceSaved=false;updateClassNotificationControls();
-  }catch(error){
-    if(preferenceSaved){
-      try{localStorage.removeItem(classPhoneAlertsKey())}
-      catch(storageError){console.error("Could not clear the failed phone notification preference.",storageError)}
+    updateClassNotificationControls();
+    try{
+      new Notification("Class alerts enabled",{body:"You will be notified when a scheduled class starts or ends while MedStudy Hub is open.",icon:"./icon-192.png"});
+    }catch(error){
+      console.error("Could not display the class notification test.",error);
+      message("class-notification-status","Alerts are enabled on this browser, but the test notification could not be displayed: "+error.message,true);return;
     }
+    message("class-notification-status","Alerts are enabled on this browser while MedStudy Hub is open. Closed-app delivery requires Web Push.");
+  }catch(error){
     console.error("Could not enable phone class notifications.",error);updateClassNotificationControls();
     message("class-notification-status","Could not enable notifications: "+error.message,true);
   }
@@ -649,9 +690,83 @@ function courseSelects(){
 function setProfileIdentity(name){
   const displayName=(name||"Student").trim()||"Student";
   $("user-display-name").textContent=displayName;
-  $("user-avatar").textContent=displayName.split(/\s+/).slice(0,2).map(part=>part.charAt(0).toUpperCase()).join("")||"S";
+  document.querySelectorAll(".avatar-initials").forEach(initials=>{
+    initials.textContent=displayName.split(/\s+/).slice(0,2).map(part=>part.charAt(0).toUpperCase()).join("")||"S";
+  });
+}
+function profilePhotoKey(userId=currentUser?.id){
+  return userId?`medstudy:profile-photo:${userId}`:null;
+}
+function profilePhotoPublicUrl(userId=currentUser?.id,cacheBust=true){
+  if(!db||!userId)return null;
+  const {data}=db.storage.from(PROFILE_PHOTO_BUCKET).getPublicUrl(`${userId}/avatar.webp`);
+  return cacheBust?`${data.publicUrl}?v=${Date.now()}`:data.publicUrl;
+}
+function avatarMarkup(name,userId,className="member-avatar"){
+  const displayName=(name||"Student").trim()||"Student";
+  const initials=displayName.split(/\s+/).slice(0,2).map(part=>part.charAt(0).toUpperCase()).join("")||"S";
+  const photo=profilePhotoPublicUrl(userId,false);
+  return `<span class="${esc(className)}${photo?" has-photo":""}" aria-hidden="true"><span class="avatar-initials">${esc(initials)}</span>${photo?`<img class="avatar-image" src="${esc(photo)}" alt="" loading="lazy" onerror="this.parentElement.classList.remove('has-photo');this.remove()">`:""}</span>`;
+}
+function setProfilePhoto(photo,fallbackPhoto=null){
+  const validPhoto=typeof photo==="string"&&(/^data:image\/(?:png|jpeg|webp|gif);base64,/i.test(photo)||/^https:\/\/[^"\s]+$/i.test(photo));
+  profilePhotoFallback=fallbackPhoto;
+  document.querySelectorAll(".avatar-image, #profile-cover-image").forEach(image=>{
+    const cover=image.id==="profile-cover-image",parent=image.parentElement;
+    const showPhoto=validPhoto&&(!cover||userPreferences.profileBannerPhoto);
+    image.dataset.fallbackUsed="false";
+    image.onerror=()=>{
+      if(profilePhotoFallback&&image.dataset.fallbackUsed!=="true"){
+        image.dataset.fallbackUsed="true";image.src=profilePhotoFallback;return;
+      }
+      image.classList.add("hidden");
+      if(!cover)parent.classList.remove("has-photo");
+    };
+    image.classList.toggle("hidden",!showPhoto);
+    if(!cover)parent.classList.toggle("has-photo",validPhoto);
+    if(showPhoto)image.src=photo;
+    else image.removeAttribute("src");
+  });
+}
+function renderProfileOverview(){
+  const name=$("display-name").value.trim()||"Student";
+  const className=$("class-name").value.trim()||"Not set";
+  const school=$("medical-school").value.trim()||"Not set";
+  const interest=$("specialty-interest").value.trim()||"Not set";
+  $("profile-hero-name").textContent=name;
+  $("profile-hero-academic").innerHTML=`${esc(school==="Not set"?"Medical school not set":school)} <span aria-hidden="true">·</span> ${esc(className==="Not set"?"Year of study not set":className)}`;
+  $("profile-hero-interest").textContent=interest==="Not set"?"Specialty interest not set":`Clinical interest: ${interest}`;
+  $("profile-overview-school").textContent=school;
+  $("profile-overview-class").textContent=className;
+  $("profile-overview-interest").textContent=interest;
+}
+function loadProfilePhoto(userId){
+  try{
+    let localPhoto=localStorage.getItem(profilePhotoKey(userId));
+    if(localPhoto&&!/^data:image\/(?:png|jpeg|webp|gif);base64,/i.test(localPhoto)){
+      console.warn("Saved profile photo has an unsupported format.");
+      message("profile-photo-message","Your saved profile picture could not be displayed. Choose a new image or remove it.",true);
+      localPhoto=null;
+    }
+    const remotePhoto=profilePhotoPublicUrl(userId);
+    setProfilePhoto(remotePhoto||localPhoto,remotePhoto?localPhoto:null);
+  }catch(error){
+    console.warn("Could not load the saved profile picture.",error);
+    message("profile-photo-message","Could not load your saved profile picture from this browser.",true);
+    setProfilePhoto(null);
+  }
+}
+function renderProfileMetrics(){
+  $("profile-metric-streak").textContent=`${Math.max(0,Number(studyStreak.current)||0)} days`;
+  $("profile-metric-quizzes").textContent=String(attempts.length);
+  $("profile-metric-courses").textContent=`${new Set(attempts.map(attempt=>attempt.course)).size} / ${COURSES.length}`;
+  const groupsEnabled=featureEnabled("group_chat");
+  $("profile-metric-groups").textContent=groupsEnabled?"1":"Unavailable";
+  $("profile-open-group-chat").disabled=!groupsEnabled;
+  $("profile-group-status").textContent=groupsEnabled?"One shared study-group chat is available.":"Study-group chat is currently unavailable.";
 }
 function renderNotifications(){
+  pruneExpiredCalendarNotices();
   const items=allNotifications(),unreadCount=items.filter(item=>!notificationReadIds.has(String(item.id))).length;
   const badge=$("notification-badge"),toggle=$("notification-toggle");
   badge.textContent=unreadCount>99?"99+":String(unreadCount);
@@ -681,7 +796,7 @@ function renderGroupChatMessages(){
     const body=item.audio_path
       ?`<button class="chat-voice-play" type="button" data-chat-play-audio="${esc(item.audio_path)}">▶ Play voice note · ${Number(item.audio_duration_seconds)||1}s</button>`
       :`<p>${esc(item.message)}</p>`;
-    return `<article class="chat-message${mine?" chat-message-mine":""}"><div><strong>${esc(item.display_name)}</strong><time datetime="${esc(item.created_at)}">${esc(formatDateTime(item.created_at,{hour:"numeric",minute:"2-digit"}))}</time></div>${body}</article>`;
+    return `<article class="chat-message${mine?" chat-message-mine":""}"><div class="chat-message-heading">${avatarMarkup(item.display_name,item.user_id,"chat-avatar")}<strong>${esc(item.display_name)}</strong><time datetime="${esc(item.created_at)}">${esc(formatDateTime(item.created_at,{hour:"numeric",minute:"2-digit"}))}</time></div>${body}</article>`;
   }).join(""):'<p class="chat-empty">No messages yet. Start the conversation.</p>';
   if(wasNearBottom)list.scrollTop=list.scrollHeight;
 }
@@ -711,7 +826,7 @@ function renderGroupChatPresence(){
   const online=groupChatPresence.filter(item=>Date.now()-new Date(item.last_seen_at).getTime()<=45000);
   $("chat-online-summary").textContent=`${online.length} member${online.length===1?"":"s"} online in chat`;
   $("chat-online-list").innerHTML=online.length?online.slice(0,12).map(item=>
-    `<span class="chat-online-member${item.user_id===currentUser?.id?" is-self":""}"><span class="chat-online-dot" aria-hidden="true"></span>${esc(item.display_name)}${item.user_id===currentUser?.id?" (you)":""}</span>`
+    `<span class="chat-online-member${item.user_id===currentUser?.id?" is-self":""}">${avatarMarkup(item.display_name,item.user_id,"chat-avatar")}<span class="chat-online-dot" aria-hidden="true"></span>${esc(item.display_name)}${item.user_id===currentUser?.id?" (you)":""}</span>`
   ).join(""):'<span class="muted">No members are active in chat right now.</span>';
   const typing=online.filter(item=>item.user_id!==currentUser?.id&&item.typing_until&&new Date(item.typing_until).getTime()>Date.now());
   $("chat-typing-indicator").textContent=typing.length
@@ -943,7 +1058,9 @@ function applyFeatureSettings(){
   $("course-grid").classList.toggle("hidden",!featureEnabled("quizzes"));
   document.querySelector('[data-go="quizzes"]').classList.toggle("hidden",!featureEnabled("quizzes"));
   $("chat-launch").classList.toggle("hidden",!featureEnabled("group_chat"));
-  $("home-leaderboard").classList.toggle("hidden",!featureEnabled("leaderboards"));
+  renderProfileMetrics();
+  $("home-leaderboard").classList.toggle("hidden",!featureEnabled("leaderboards")||userPreferences.homeSections.leaderboard===false);
+  $("home-courses-section").classList.toggle("hidden",!featureEnabled("quizzes")||userPreferences.homeSections.courses===false);
   $("leaderboard-panel").classList.toggle("hidden",!featureEnabled("leaderboards"));
   $("score-entry-panel").classList.toggle("hidden",!featureEnabled("practice_scores"));
   $("notification-wrap").classList.toggle("hidden",!featureEnabled("announcements")&&!featureEnabled("schedule_reminders"));
@@ -1143,14 +1260,97 @@ $("admin-feature-settings").addEventListener("change",async event=>{
   finally{toggle.disabled=false}
 });
 $("enable-class-phone-notifications").addEventListener("click",toggleClassPhoneNotifications);
+ $("home-section-options").addEventListener("change",event=>{
+  const toggle=event.target.closest("[data-home-section-toggle]");if(!toggle)return;
+  const key=toggle.dataset.homeSectionToggle;
+  userPreferences.homeSections={...userPreferences.homeSections,[key]:toggle.checked};
+  applyHomeSectionPreferences();
+  void savePersonalPreferences({homeSections:userPreferences.homeSections},"home-customization-status","Home page preferences synced to your account.");
+});
+$("focus-mode-open").addEventListener("click",openFocusMode);
+$("focus-modal-close").addEventListener("click",closeFocusMode);
+$("focus-modal").addEventListener("click",event=>{if(event.target.id==="focus-modal")closeFocusMode()});
+$("focus-start").addEventListener("click",startFocusTimer);
+$("focus-pause").addEventListener("click",pauseFocusTimer);
+$("focus-reset").addEventListener("click",resetFocusTimer);
+$("focus-break").addEventListener("click",startFocusBreak);
+$("focus-duration").addEventListener("change",()=>{
+  const duration=Number($("focus-duration").value);
+  if(!Number.isInteger(duration)||duration<1||duration>180){
+    message("focus-save-status","Choose a focus duration from 1 to 180 minutes.",true);return;
+  }
+  $("focus-duration").value=String(duration);
+  userPreferences.focusDurationMinutes=duration;
+  if(!focusTimerInterval&&focusTimerPhase==="focus"&&!focusSessionStarted){
+    focusRemainingSeconds=duration*60;renderFocusTimer();
+  }
+  void savePersonalPreferences({focusDurationMinutes:duration},"focus-save-status","Your focus duration synced to your account.");
+});
 document.addEventListener("click",event=>{
   if(!event.target.closest(".notification-wrap"))closeNotificationPanel();
   if(!event.target.closest("#main-navigation")&&!event.target.closest("#nav-menu-toggle"))closeNavigation();
   if(!event.target.closest("#settings-drawer")&&!event.target.closest("#settings-toggle"))closeSettings();
-});
+  const recentLink=event.target.closest("[data-recent-kind][data-recent-id]");
+  if(recentLink)recordRecentItem(recentLink.dataset.recentKind,recentLink.dataset.recentId);
+},true);
 document.addEventListener("keydown",event=>{
-  if(event.key==="Escape"){closeNavigation();closeSettings();closeNotificationPanel();closeGroupChat();closeStreakCelebration()}
+  if(event.key==="Escape"){closeNavigation();closeSettings();closeNotificationPanel();closeGroupChat();closeStreakCelebration();closeFocusMode()}
 });
+function renderFocusTimer(){
+  const total=Math.max(0,focusRemainingSeconds),minutes=Math.floor(total/60),seconds=total%60;
+  $("focus-timer-display").textContent=`${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}`;
+  $("focus-phase-label").textContent=focusTimerInterval
+    ?focusTimerPhase==="break"?"Break in progress":"Focus session in progress"
+    :total===0?focusTimerPhase==="break"?"Break complete. Ready to focus?":"Focus session complete. Well done."
+    :focusTimerPhase==="break"?"Ready for a short break":"Ready for a focus session";
+  $("focus-start").disabled=!!focusTimerInterval;
+  $("focus-pause").disabled=!focusTimerInterval;
+  $("focus-duration").disabled=!!focusTimerInterval||(focusTimerPhase==="break"&&total>0);
+}
+function openFocusMode(){
+  if(!focusSessionStarted&&focusTimerPhase==="focus")focusRemainingSeconds=userPreferences.focusDurationMinutes*60;
+  renderFocusTimer();
+  $("focus-modal").classList.add("is-open");$("focus-modal").setAttribute("aria-hidden","false");
+  document.body.classList.add("dialog-open");$("focus-start").focus();
+}
+function closeFocusMode(){
+  const modal=$("focus-modal");if(!modal?.classList.contains("is-open"))return;
+  pauseFocusTimer();
+  modal.classList.remove("is-open");modal.setAttribute("aria-hidden","true");
+  if(!$("streak-modal").classList.contains("is-open"))document.body.classList.remove("dialog-open");
+  $("focus-mode-open").focus({preventScroll:true});
+}
+function startFocusTimer(){
+  if(focusTimerInterval)return;
+  if(focusRemainingSeconds<=0){
+    focusTimerPhase="focus";focusRemainingSeconds=Number($("focus-duration").value)*60;
+  }
+  if(!Number.isFinite(focusRemainingSeconds)||focusRemainingSeconds<1){
+    message("focus-save-status","Choose a valid focus duration before starting.",true);return;
+  }
+  focusSessionStarted=focusTimerPhase==="focus";focusEndsAt=Date.now()+focusRemainingSeconds*1000;
+  focusTimerInterval=setInterval(()=>{
+    focusRemainingSeconds=Math.max(0,Math.ceil((focusEndsAt-Date.now())/1000));
+    if(focusRemainingSeconds===0){
+      clearInterval(focusTimerInterval);focusTimerInterval=null;focusSessionStarted=false;
+    }
+    renderFocusTimer();
+  },250);
+  renderFocusTimer();
+}
+function pauseFocusTimer(){
+  if(!focusTimerInterval)return;
+  focusRemainingSeconds=Math.max(0,Math.ceil((focusEndsAt-Date.now())/1000));
+  clearInterval(focusTimerInterval);focusTimerInterval=null;renderFocusTimer();
+}
+function resetFocusTimer(){
+  pauseFocusTimer();focusTimerPhase="focus";focusSessionStarted=false;
+  focusRemainingSeconds=Number($("focus-duration").value)*60;renderFocusTimer();
+}
+function startFocusBreak(){
+  pauseFocusTimer();focusTimerPhase="break";focusSessionStarted=false;focusRemainingSeconds=5*60;
+  startFocusTimer();
+}
 function showPage(page,skipDataLoad=false){
   if(page==="admin"&&!isAdmin){showPage("home");return}
   if((page==="quizzes"&&!featureEnabled("quizzes"))||(page==="resources"&&!featureEnabled("resources"))||
@@ -1188,7 +1388,7 @@ function signedOut(){
   $("admin-user-activity").classList.add("hidden");$("admin-user-activity-content").textContent="";
   if(currentUser)clearSessionStartedAt(currentUser.id);
   queuedLiveNotices=[];streakCheckPending=false;studyTasks=[];studyTasksAvailable=true;renderStudyTasks();
-  closeGroupChat();closeStreakCelebration();closeSettings();currentUser=null;isAdmin=false;activityResetSyncAvailable=false;userPreferences={...DEFAULT_USER_PREFERENCES};studyStreak={current:0,longest:0,lastActiveDate:null,syncStatus:""};notifications=[];calendarNotifications=[];groupChatMessages=[];notificationReadIds=new Set();setProfileIdentity("Student");applyUserPreferences();applyThemeColor(DEFAULT_THEME_COLOR);renderStudyStreak();
+  closeGroupChat();closeStreakCelebration();closeFocusMode();closeSettings();currentUser=null;isAdmin=false;activityResetSyncAvailable=false;userPreferences={...DEFAULT_USER_PREFERENCES};studyStreak={current:0,longest:0,lastActiveDate:null,syncStatus:""};notifications=[];calendarNotifications=[];groupChatMessages=[];notificationReadIds=new Set();setProfileIdentity("Student");setProfilePhoto(null);applyUserPreferences();applyThemeColor(DEFAULT_THEME_COLOR);renderStudyStreak();
   groupChatMessages=[];groupChatPresence=[];chatAudioUrlCache.clear();
   closeNavigation();closeNotificationPanel();$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");
   $("user-tools").classList.add("hidden");$("main-navigation").classList.add("hidden");$("nav-menu-toggle").classList.add("hidden");$("admin-nav").classList.add("hidden");
@@ -1295,7 +1495,37 @@ function renderBulkQuizRows(){
 renderBulkQuizRows();
 async function loadContent(){
   const [q,r]=await Promise.all([db.from("quizzes").select("*").eq("is_published",true).order("created_at",{ascending:false}),db.from("resources").select("*").eq("is_published",true).order("created_at",{ascending:false})]);
-  if(q.error||r.error){console.error(q.error||r.error);return}quizzes=q.data||[];resources=r.data||[];renderQuizzes();renderResources();renderCourses();
+  if(q.error||r.error){console.error(q.error||r.error);return}quizzes=q.data||[];resources=r.data||[];renderQuizzes();renderResources();renderSavedResources();renderRecentItems();renderCourses();
+}
+function recordRecentItem(kind,id){
+  if(!currentUser||!["quiz","resource"].includes(kind)||!/^\d+$/.test(String(id)))return;
+  const recentItems=[{kind,id:String(id),visitedAt:new Date().toISOString()},...(userPreferences.recentItems||[])
+    .filter(item=>item.kind!==kind||String(item.id)!==String(id))].slice(0,8);
+  void savePersonalPreferences({recentItems},"recent-items-status","Recent items synced to your account.");
+  renderRecentItems();
+}
+async function renderRecentItems(){
+  const list=$("recent-items-list");if(!list)return;
+  const requestId=++recentRenderId;
+  const entries=(userPreferences.recentItems||[]).map(item=>{
+    const data=item.kind==="quiz"?quizzes.find(row=>String(row.id)===item.id):resources.find(row=>String(row.id)===item.id);
+    return data?{...item,data}:null;
+  }).filter(Boolean);
+  if(!entries.length){
+    list.innerHTML='<p class="muted">Your recent quizzes and resources will appear here as you study.</p>';return;
+  }
+  const resolved=await Promise.all(entries.map(async item=>{
+    if(item.kind==="quiz")return {...item,url:item.data.google_form_url,error:null};
+    try{return {...item,...await getResourceLink(item.data)}}
+    catch(error){console.error("Could not load a recent study resource.",error);return {...item,url:null,error:error.message}}
+  }));
+  if(requestId!==recentRenderId)return;
+  list.innerHTML=resolved.map(item=>{
+    const link=item.url&&safeUrl(item.url)
+      ?`<a class="button button-outline" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer" data-recent-kind="${item.kind}" data-recent-id="${esc(item.id)}">Open again ↗</a>`
+      :'<span class="field-help">This item is no longer available.</span>';
+    return `<article class="recent-item"><div><span class="tag">${esc(item.kind==="quiz"?"Quiz":"Resource")} • ${esc(item.data.course)}</span><h3>${esc(item.data.title)}</h3><time datetime="${esc(item.visitedAt)}">Opened ${esc(formatDateTime(item.visitedAt))}</time></div>${link}</article>`;
+  }).join("");
 }
 async function loadClassAndExamData(){
   if(!currentUser)return;
@@ -1370,8 +1600,10 @@ function startScheduleNotifications(){
   const check=()=>{
     if(!currentUser)return;
     const now=new Date(),today=localDateKey(now),minuteOfDay=now.getHours()*60+now.getMinutes();
+    if(pruneExpiredCalendarNotices(now))renderNotifications();
     const showInApp=featureEnabled("schedule_reminders")&&userPreferences.scheduleAlerts,showClassInApp=showInApp&&featureEnabled("classes");
     const showPhone=phoneClassAlertsEnabled()&&featureEnabled("classes");
+    const classExpiresAt=localEndOfDay(now);
     if(showClassInApp||showPhone){
       for(const session of classSessions){
         if(Number(session.day_of_week)!==dayNumber(now))continue;
@@ -1380,7 +1612,7 @@ function startScheduleNotifications(){
         const startId=`class-${session.id}-${today}-start`,endId=`class-${session.id}-${today}-end`;
         if(showClassInApp&&minuteOfDay>=startMinute){
           const title=`${session.course} class has started`,body=`${session.title} with ${session.lecturer} ${minuteOfDay<endMinute?"is now in session.":"started earlier today."}`;
-          addCalendarNotice(startId,title,body);
+          addCalendarNotice(startId,title,body,classExpiresAt);
         }
         if(showPhone&&minuteOfDay>=startMinute&&minuteOfDay<startMinute+5){
           const title=`${session.course} class has started`,body=`${session.title} with ${session.lecturer} is now in session.`;
@@ -1388,7 +1620,7 @@ function startScheduleNotifications(){
         }
         if(showClassInApp&&minuteOfDay>=endMinute){
           const title=`${session.course} class has ended`,body=`${session.title} with ${session.lecturer} has finished.`;
-          addCalendarNotice(endId,title,body);
+          addCalendarNotice(endId,title,body,classExpiresAt);
         }
         if(showPhone&&minuteOfDay>=endMinute&&minuteOfDay<endMinute+5){
           const title=`${session.course} class has ended`,body=`${session.title} with ${session.lecturer} has finished.`;
@@ -1414,7 +1646,7 @@ async function renderHomeLeaderboard(){
     const rank=rows.findIndex(row=>row.user_id===currentUser.id);
     $("home-leaderboard-rank").innerHTML=rank>=0?rank<3?`${medal(rank+1)} <span>${rank+1}</span>`:`<span class="ordinal-rank">${medal(rank+1)}</span>`:"—";
     $("home-leaderboard-label").textContent=rank>=0?"Your overall rank":$("leaderboard-opt-in").checked?"Waiting for 3 students with verified scores":"Opt in; ranking starts after 3 students qualify";
-    box.innerHTML=rows.length?rows.map((row,index)=>`<div class="home-leader-row"><span class="medal${index>=3?" ordinal-rank":""}">${medal(index+1)}</span><strong>${esc(row.display_name)}${row.user_id===currentUser.id?" (you)":""}</strong><span>${Number(row.average_percentage).toFixed(1)}%</span></div>`).join(""):'<p class="muted">No rankings yet. At least three opted-in students need a verified score before rankings appear.</p>';
+    box.innerHTML=rows.length?rows.map((row,index)=>`<div class="home-leader-row"><span class="medal${index>=3?" ordinal-rank":""}">${medal(index+1)}</span>${avatarMarkup(row.display_name,row.user_id,"leader-avatar")}<strong>${esc(row.display_name)}${row.user_id===currentUser.id?" (you)":""}</strong><span>${Number(row.average_percentage).toFixed(1)}%</span></div>`).join(""):'<p class="muted">No rankings yet. At least three opted-in students need a verified score before rankings appear.</p>';
   }catch(error){box.innerHTML=`<p class="muted">Could not load leaderboard: ${esc(error.message)}</p>`}
   finally{box.removeAttribute("aria-busy")}
 }
@@ -1444,7 +1676,7 @@ function renderQuizzes(){
   $("quiz-results-status").textContent=`${rows.length} quiz${rows.length===1?"":"zes"} found.`;
   $("quiz-list").innerHTML=rows.length?rows.map(quiz=>{
     const favorite=favorites.has(String(quiz.id)),topics=Array.isArray(quiz.topics)?quiz.topics:[];
-    return `<article class="content-card"><span class="tag">${esc(quiz.course)} • ${esc(quiz.difficulty||"Practice")}</span><h3>${esc(quiz.title)}</h3><p>${esc(quiz.description||"Open the quiz to begin.")}</p>${topics.length?`<div class="quiz-topic-tags">${topics.map(item=>`<span class="quiz-topic-tag">${esc(item)}</span>`).join("")}</div>`:""}<div class="quiz-card-actions"><a class="button button-primary" href="${esc(quiz.google_form_url)}" target="_blank" rel="noopener noreferrer">Open Google Form ↗</a><button class="button button-outline quiz-favorite-button" type="button" data-favorite-quiz="${esc(quiz.id)}" aria-pressed="${favorite}" aria-label="${favorite?"Remove from":"Add to"} favorites: ${esc(quiz.title)}">${favorite?"★ Saved":"☆ Save"}</button></div></article>`;
+    return `<article class="content-card"><span class="tag">${esc(quiz.course)} • ${esc(quiz.difficulty||"Practice")}</span><h3>${esc(quiz.title)}</h3><p>${esc(quiz.description||"Open the quiz to begin.")}</p>${topics.length?`<div class="quiz-topic-tags">${topics.map(item=>`<span class="quiz-topic-tag">${esc(item)}</span>`).join("")}</div>`:""}<div class="quiz-card-actions"><a class="button button-primary" href="${esc(quiz.google_form_url)}" target="_blank" rel="noopener noreferrer" data-recent-kind="quiz" data-recent-id="${esc(quiz.id)}">Open Google Form ↗</a><button class="button button-outline quiz-favorite-button" type="button" data-favorite-quiz="${esc(quiz.id)}" aria-pressed="${favorite}" aria-label="${favorite?"Remove from":"Add to"} favorites: ${esc(quiz.title)}">${favorite?"★ Saved":"☆ Save"}</button></div></article>`;
   }).join(""):'<p class="panel">No quizzes match these filters. Try changing your search or filters.</p>';
 }
 function parseQuizTopics(value){
@@ -1564,9 +1796,11 @@ async function renderResources(){
   }));
   if(requestId!==resourceRenderId)return;
   const visibleCourses=c==="all"?COURSES:[c];
+  const savedResourceIds=new Set(userPreferences.savedResourceIds||[]);
   const card=entry=>{
-    const r=entry.resource,link=entry.url&&safeUrl(entry.url)?`<a class="button button-outline" href="${esc(entry.url)}" target="_blank" rel="noopener noreferrer">${r.storage_path?"Download document ↗":r.resource_type==="video"?"Watch video ↗":"Open resource ↗"}</a>`:`<p class="message error">Could not load this document: ${esc(entry.error||"Invalid resource URL")}</p>`;
-    return `<article class="content-card"><span class="tag">${esc(r.resource_type)}</span><h4>${esc(r.title)}</h4><p>${esc(r.description||"")}</p>${link}</article>`;
+    const r=entry.resource,link=entry.url&&safeUrl(entry.url)?`<a class="button button-outline" href="${esc(entry.url)}" target="_blank" rel="noopener noreferrer" data-recent-kind="resource" data-recent-id="${esc(r.id)}">${r.storage_path?"Download document ↗":r.resource_type==="video"?"Watch video ↗":"Open resource ↗"}</a>`:`<p class="message error">Could not load this document: ${esc(entry.error||"Invalid resource URL")}</p>`;
+    const saved=savedResourceIds.has(String(r.id));
+    return `<article class="content-card"><span class="tag">${esc(r.course)} • ${esc(r.resource_type)}</span><h4>${esc(r.title)}</h4><p>${esc(r.description||"")}</p><div class="resource-card-actions">${link}<button class="button button-outline resource-save-button" type="button" data-save-resource="${esc(r.id)}" aria-pressed="${saved}">${saved?"★ Saved":"☆ Save"}</button></div></article>`;
   };
   $("resource-list").innerHTML=visibleCourses.map(course=>{
     const courseRows=entries.filter(entry=>entry.resource.course===course);
@@ -1586,6 +1820,51 @@ async function renderResources(){
   $("resource-list").removeAttribute("aria-busy");
 }
 $("resource-course-filter").onchange=renderResources;$("resource-type-filter").onchange=renderResources;
+async function renderSavedResources(){
+  const list=$("profile-saved-resources-list");if(!list)return;
+  const savedIds=new Set(userPreferences.savedResourceIds||[]);
+  const saved=resources.filter(resource=>savedIds.has(String(resource.id)));
+  if(!saved.length){
+    list.innerHTML='<p class="muted">No saved resources yet. Browse the resource library and select “Save” on materials you want to revisit.</p>';
+    return;
+  }
+  list.innerHTML=loadingMessage("Loading saved resources…");
+  const entries=await Promise.all(saved.map(async resource=>{
+    try{return {resource,...await getResourceLink(resource)}}
+    catch(error){console.error("Could not load a saved study resource.",error);return {resource,url:null,error:error.message}}
+  }));
+  list.innerHTML=entries.map(({resource,url,error})=>{
+    const link=url&&safeUrl(url)?`<a class="button button-outline" href="${esc(url)}" target="_blank" rel="noopener noreferrer" data-recent-kind="resource" data-recent-id="${esc(resource.id)}">Open resource ↗</a>`:
+      `<span class="field-help">Resource unavailable${error?`: ${esc(error)}`:""}.</span>`;
+    const note=userPreferences.resourceNotes?.[String(resource.id)]||"";
+    return `<article class="profile-saved-resource"><div class="profile-saved-resource-info"><span class="tag">${esc(resource.course)} • ${esc(resource.resource_type)}</span><h3>${esc(resource.title)}</h3></div><div class="profile-saved-resource-content">${link}<label class="resource-note-label">Private note<textarea data-resource-note-input="${esc(resource.id)}" maxlength="2000" rows="3" placeholder="Add a private note about this resource…">${esc(note)}</textarea></label><button class="button button-outline resource-note-save" type="button" data-save-resource-note="${esc(resource.id)}">Save note</button></div><button class="button button-light resource-unsave-button" type="button" data-save-resource="${esc(resource.id)}" aria-pressed="true">Remove from saved</button></article>`;
+  }).join("");
+}
+$("resource-list").addEventListener("click",event=>{
+  saveResourceFromClick(event);
+});
+function saveResourceFromClick(event){
+  const button=event.target.closest("[data-save-resource]");if(!button)return;
+  const saved=new Set(userPreferences.savedResourceIds||[]),id=button.dataset.saveResource;
+  if(saved.has(id))saved.delete(id);else saved.add(id);
+  void savePersonalPreferences({savedResourceIds:[...saved]},"profile-saved-status","Saved resources synced to your account.");
+  renderResources();renderSavedResources();
+}
+$("profile-saved-resources-list").addEventListener("click",event=>{
+  const noteButton=event.target.closest("[data-save-resource-note]");
+  if(noteButton){
+    const id=noteButton.dataset.saveResourceNote,textarea=document.querySelector(`[data-resource-note-input="${id}"]`);
+    if(!textarea){message("profile-saved-status","Could not find the resource note field. Refresh the page and try again.",true);return}
+    const note=textarea.value.trim(),resourceNotes={...userPreferences.resourceNotes};
+    if(note)resourceNotes[id]=note;else delete resourceNotes[id];
+    if(Object.keys(resourceNotes).length>50){
+      message("profile-saved-status","You can save private notes for up to 50 resources.",true);return;
+    }
+    void savePersonalPreferences({resourceNotes},"profile-saved-status",note?"Private note saved to your account.":"Private note removed.");
+    return;
+  }
+  saveResourceFromClick(event);
+});
 
 $("study-task-form").addEventListener("submit",event=>{
   event.preventDefault();
@@ -1644,6 +1923,7 @@ async function loadAttempts(){
 function renderPersonalStats(){
   const n=attempts.length,avg=n?attempts.reduce((s,a)=>s+100*Number(a.score)/Number(a.total_marks),0)/n:0;
   const verified=attempts.filter(a=>a.is_verified).length;
+  renderProfileMetrics();
   $("stats-grid").innerHTML=`<div class="stat"><strong data-count-up="${n}">${n}</strong><span>Personal quizzes recorded</span></div><div class="stat"><strong data-count-up="${avg.toFixed(1)}" data-count-decimals="1" data-count-suffix="%">${avg.toFixed(1)}%</strong><span>Personal average</span></div><div class="stat"><strong data-count-up="${verified}">${verified}</strong><span>Verified scores</span></div><div class="stat"><strong id="website-usage-total">${esc(formatDuration(loadWebsiteUsage()))}</strong><span>Time on this device</span></div>`;
   $("stats-grid").querySelectorAll("[data-count-up]").forEach(item=>animateCountUp(item,item.dataset.countUp,Number(item.dataset.countDecimals)||0,item.dataset.countSuffix||""));
   $("results-body").innerHTML=n?attempts.map(a=>{
@@ -1766,19 +2046,22 @@ function renderAchievements(){
 }
 async function loadProfile(){
   if(!currentUser)return;
+  profileAcademicFieldsAvailable=true;
   const userId=currentUser.id,panel=document.querySelector(".profile-panel");
   panel.setAttribute("aria-busy","true");message("profile-message","Loading your profile…");
   try{
-    const baseFields=["display_name","leaderboard_opt_in","full_name","theme_color","class_name","favorite_subject","quiz_rank"];
+    const baseFields=["display_name","leaderboard_opt_in","full_name","theme_color","class_name","favorite_subject","quiz_rank","medical_school","specialty_interest"];
     let fields=[...baseFields,"preferences","activity_reset_at"];
     let profile=await db.from("profiles").select(fields.join(",")).eq("id",userId).single();
-    let preferencesAvailable=true,resetMarkerAvailable=true;
-    for(let retry=0;profile.error&&retry<2;retry++){
+    let preferencesAvailable=true,resetMarkerAvailable=true,academicFieldsAvailable=true;
+    for(let retry=0;profile.error&&retry<4;retry++){
       const errorText=profile.error.message||"";
       if(preferencesAvailable&&(profile.error.code==="42703"||profile.error.code==="PGRST204")&&/preferences.*(column|schema cache)|column.*preferences/i.test(errorText)){
         preferencesAvailable=false;fields=fields.filter(field=>field!=="preferences");
       }else if(resetMarkerAvailable&&(profile.error.code==="42703"||profile.error.code==="PGRST204")&&/activity_reset_at.*(column|schema cache)|column.*activity_reset_at/i.test(errorText)){
         resetMarkerAvailable=false;fields=fields.filter(field=>field!=="activity_reset_at");
+      }else if(academicFieldsAvailable&&(profile.error.code==="42703"||profile.error.code==="PGRST204")&&/(medical_school|specialty_interest).*(column|schema cache)|column.*(medical_school|specialty_interest)/i.test(errorText)){
+        academicFieldsAvailable=false;fields=fields.filter(field=>field!=="medical_school"&&field!=="specialty_interest");
       }else break;
       console.warn("The profile table is missing a newer optional settings column.",profile.error);
       profile=await db.from("profiles").select(fields.join(",")).eq("id",userId).single();
@@ -1787,6 +2070,7 @@ async function loadProfile(){
     const {data}=profile;
     if(currentUser?.id!==userId)return;
     activityResetSyncAvailable=resetMarkerAvailable;
+    profileAcademicFieldsAvailable=academicFieldsAvailable;
     const activityWasReset=resetMarkerAvailable&&data.activity_reset_at?applyActivityResetMarker(data.activity_reset_at):false;
     if(preferencesAvailable&&data.preferences&&typeof data.preferences==="object"&&!Array.isArray(data.preferences)){
       userPreferences=sanitizeUserPreferences({...userPreferences,...data.preferences});
@@ -1795,11 +2079,15 @@ async function loadProfile(){
     const themeColor=data.theme_color||DEFAULT_THEME_COLOR;
     if(!applyThemeColor(themeColor)){message("profile-message","Your saved website colour is invalid. Choose a new colour and save your profile.",true);return}
     const displayName=data.display_name||data.full_name||"Student";
-    $("display-name").value=displayName;$("class-name").value=data.class_name||"";$("favorite-subject").value=data.favorite_subject||"";$("quiz-rank").value=data.quiz_rank||"";
+    $("display-name").value=displayName;$("class-name").value=data.class_name||"";$("medical-school").value=data.medical_school||"";
+    $("specialty-interest").value=data.specialty_interest||"";$("favorite-subject").value=data.favorite_subject||"";$("quiz-rank").value=data.quiz_rank||"";
+    $("profile-banner-photo").checked=userPreferences.profileBannerPhoto;
     $("leaderboard-opt-in").checked=!!data.leaderboard_opt_in;$("settings-leaderboard-opt-in").checked=!!data.leaderboard_opt_in;$("theme-color").value=themeColor;$("settings-accent-color").value=themeColor;setProfileIdentity(displayName);
+    renderProfileOverview();loadProfilePhoto(userId);
+    renderProfileMetrics();renderSavedResources();renderRecentItems();
     $("home-display-name").textContent=displayName;$("home-class-name").textContent=data.class_name||"Class / year not set";
     if(!preferencesAvailable)message("settings-message","Preferences are stored on this browser until the latest schema.sql is applied for cross-device sync.");
-    message("profile-message","");
+    message("profile-message",academicFieldsAvailable?"":"Run the latest schema.sql to sync medical school and specialty details.");
     if(activityWasReset)await loadAttempts();
   }catch(error){
     console.error("Could not load profile settings.",error);
@@ -1838,16 +2126,142 @@ function applyThemeColor(color){
 $("theme-color").addEventListener("input",e=>{$("settings-accent-color").value=e.target.value;applyThemeColor(e.target.value)});
 $("settings-accent-color").addEventListener("input",e=>{$("theme-color").value=e.target.value;applyThemeColor(e.target.value)});
 $("reset-theme-color").addEventListener("click",()=>{$("theme-color").value=DEFAULT_THEME_COLOR;$("settings-accent-color").value=DEFAULT_THEME_COLOR;applyThemeColor(DEFAULT_THEME_COLOR)});
+$("edit-profile-button").addEventListener("click",()=>{
+  $("profile-tab-button-overview").click();
+  $("profile-editor").scrollIntoView({behavior:"smooth",block:"start"});
+  $("display-name").focus({preventScroll:true});
+});
+document.querySelectorAll("[data-profile-tab]").forEach(button=>button.addEventListener("click",()=>{
+  const activeTab=button.dataset.profileTab;
+  document.querySelectorAll("[data-profile-tab]").forEach(tab=>{
+    const active=tab===button;tab.classList.toggle("active",active);tab.setAttribute("aria-selected",String(active));
+  });
+  document.querySelectorAll(".profile-tab-panel").forEach(panel=>{
+    const active=panel.id===`profile-tab-${activeTab}`;panel.hidden=!active;panel.classList.toggle("hidden",!active);
+  });
+  if(activeTab==="resources")renderSavedResources();
+}));
+$("profile-open-group-chat").addEventListener("click",()=>{
+  if(!featureEnabled("group_chat"))return;
+  showPage("home");openGroupChat();
+});
+function compressProfilePhoto(file){
+  return new Promise((resolve,reject)=>{
+    const objectUrl=URL.createObjectURL(file),image=new Image();
+    image.onload=()=>{
+      const scale=Math.min(1,PROFILE_PHOTO_MAX_DIMENSION/Math.max(image.naturalWidth,image.naturalHeight));
+      const canvas=document.createElement("canvas");
+      canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));
+      canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+      const context=canvas.getContext("2d");
+      if(!context){URL.revokeObjectURL(objectUrl);reject(new Error("Image processing is unavailable in this browser."));return}
+      context.drawImage(image,0,0,canvas.width,canvas.height);
+      canvas.toBlob(blob=>{
+        URL.revokeObjectURL(objectUrl);
+        if(!blob){reject(new Error("The selected image could not be compressed. Try another image."));return}
+        if(blob.type!=="image/webp"){reject(new Error("WebP image compression is unavailable in this browser."));return}
+        if(blob.size>PROFILE_PHOTO_MAX_BYTES){reject(new Error("The optimized image is still too large. Choose a simpler or smaller photo."));return}
+        resolve(blob);
+      },"image/webp",.82);
+    };
+    image.onerror=()=>{URL.revokeObjectURL(objectUrl);reject(new Error("The selected image could not be read. Try another image."))};
+    image.src=objectUrl;
+  });
+}
+async function uploadProfilePhoto(file,onProgress=()=>{}){
+  onProgress("Optimizing your profile picture…");
+  const blob=await compressProfilePhoto(file);
+  if(db&&currentUser){
+    onProgress("Uploading your profile picture…");
+    const path=`${currentUser.id}/avatar.webp`;
+    const {error}=await db.storage.from(PROFILE_PHOTO_BUCKET).upload(path,blob,{
+      contentType:"image/webp",upsert:true,cacheControl:"0"
+    });
+    if(error)throw error;
+    return profilePhotoPublicUrl(currentUser.id);
+  }
+  onProgress("Saving your profile picture…");
+  const dataUrl=await new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>typeof reader.result==="string"?resolve(reader.result):reject(new Error("The optimized image could not be read."));
+    reader.onerror=()=>reject(reader.error||new Error("Could not read the optimized image."));
+    reader.readAsDataURL(blob);
+  });
+  const key=profilePhotoKey();
+  if(!key)throw new Error("Sign in before choosing a profile picture.");
+  localStorage.setItem(key,dataUrl);
+  return dataUrl;
+}
+$("profile-picture").addEventListener("change",async event=>{
+  const file=event.target.files?.[0];
+  if(!file)return;
+  if(!["image/png","image/jpeg","image/webp","image/gif"].includes(file.type)){
+    message("profile-photo-message","Choose a PNG, JPEG, WebP or GIF image.",true);event.target.value="";return;
+  }
+  if(file.size>PROFILE_PHOTO_MAX_INPUT_BYTES){
+    message("profile-photo-message","Choose an image smaller than 10 MB.",true);event.target.value="";return;
+  }
+  const userId=currentUser?.id,button=$("profile-picture");
+  if(!userId){message("profile-photo-message","Sign in before choosing a profile picture.",true);event.target.value="";return}
+  button.disabled=true;
+  try{
+    const photo=await uploadProfilePhoto(file,text=>message("profile-photo-message",text));
+    if(currentUser?.id!==userId)return;
+    try{localStorage.removeItem(profilePhotoKey(userId))}
+    catch(error){console.warn("Could not clear the local profile-photo cache.",error)}
+    setProfilePhoto(photo);
+    message("profile-photo-message","Profile picture uploaded successfully.");
+  }catch(error){
+    console.error("Could not upload the profile picture.",error);
+    message("profile-photo-message",error.message||"Could not upload the profile picture. Try again.",true);
+  }finally{button.disabled=false}
+  event.target.value="";
+});
+$("profile-banner-photo").addEventListener("change",event=>{
+  const usePhoto=event.target.checked;
+  const photo=document.querySelector("#profile-avatar-image").getAttribute("src");
+  userPreferences.profileBannerPhoto=usePhoto;
+  setProfilePhoto(photo);
+  void savePersonalPreferences(
+    {profileBannerPhoto:usePhoto},
+    "profile-photo-message",
+    usePhoto?"Profile banner preference saved.":"The profile banner will use your theme colours."
+  );
+});
+$("remove-profile-picture").addEventListener("click",async()=>{
+  const key=profilePhotoKey();
+  if(!key){message("profile-photo-message","Sign in before changing your profile picture.",true);return}
+  const button=$("remove-profile-picture");button.disabled=true;
+  try{
+    if(db&&currentUser){
+      const {error}=await db.storage.from(PROFILE_PHOTO_BUCKET).remove([`${currentUser.id}/avatar.webp`]);
+      if(error)throw error;
+    }
+    localStorage.removeItem(key);setProfilePhoto(null);
+    message("profile-photo-message","Profile picture removed.");
+  }catch(error){
+    console.error("Could not remove the saved profile picture.",error);
+    message("profile-photo-message",error.message||"Could not remove the profile picture.",true);
+  }finally{button.disabled=false}
+});
 $("profile-form").addEventListener("submit",async e=>{
   e.preventDefault();const name=$("display-name").value.trim(),themeColor=$("theme-color").value;if(!name){message("profile-message","Please enter a display name.",true);return}
   if(!applyThemeColor(themeColor)){message("profile-message","Choose a valid website colour.",true);return}
-  const {error}=await db.from("profiles").update({
-    display_name:name,class_name:$("class-name").value.trim()||null,favorite_subject:$("favorite-subject").value||null,
+  const updates={
+    display_name:name,
+    class_name:$("class-name").value.trim()||null,favorite_subject:$("favorite-subject").value||null,
     quiz_rank:$("quiz-rank").value.trim()||null,leaderboard_opt_in:$("leaderboard-opt-in").checked,theme_color:themeColor
-  }).eq("id",currentUser.id);
-  message("profile-message",error?error.message:"Profile saved.",!!error);if(!error){
+  };
+  if(profileAcademicFieldsAvailable){
+    updates.medical_school=$("medical-school").value.trim()||null;
+    updates.specialty_interest=$("specialty-interest").value.trim()||null;
+  }
+  const {error}=await db.from("profiles").update(updates).eq("id",currentUser.id);
+  const successMessage=profileAcademicFieldsAvailable?"Profile saved.":"Profile saved. Run the latest schema.sql to sync medical school and specialty details.";
+  message("profile-message",error?error.message:successMessage,!!error);if(!error){
     $("settings-leaderboard-opt-in").checked=$("leaderboard-opt-in").checked;$("settings-accent-color").value=themeColor;
     setProfileIdentity(name);$("home-display-name").textContent=name;
+    renderProfileOverview();
     $("home-class-name").textContent=$("class-name").value.trim()||"Class / year not set";
     renderLeaderboard();renderHomeLeaderboard()
   }
@@ -1859,6 +2273,7 @@ async function saveUserSettings(event){
   if(!currentUser||!/^#[0-9a-f]{6}$/i.test(accentColor)){message("settings-message","Choose a valid accent colour.",true);return}
   if(!Number.isInteger(dailyPopupLimit)||dailyPopupLimit<1||dailyPopupLimit>20){message("settings-message","Reminder popup limit must be between 1 and 20.",true);return}
   const next={
+    ...userPreferences,
     language:$("settings-language").value,timeZone:$("settings-timezone").value,region:$("settings-region").value,
     darkMode:$("settings-dark-mode").checked,density:$("settings-density").value,textSize:$("settings-text-size").value,
     announcementAlerts:$("settings-announcements").checked,scheduleAlerts:$("settings-schedule-reminders").checked,

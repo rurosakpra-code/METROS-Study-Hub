@@ -37,7 +37,7 @@
         </section>
       </div>
       <button id="profile-shortcut" class="profile-shortcut" type="button" aria-label="Open My profile">
-        <span id="user-avatar" class="user-avatar" aria-hidden="true">S</span><span id="user-display-name">Student</span>
+        <span id="user-avatar" class="user-avatar" aria-hidden="true"><span class="avatar-initials">S</span><img class="avatar-image hidden" alt=""></span><span id="user-display-name">Student</span>
       </button>
       <button id="settings-toggle" class="icon-button settings-toggle" type="button" aria-label="Open settings" aria-controls="settings-drawer" aria-expanded="false">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"></path><path d="m19.4 15 .1.1a1.7 1.7 0 0 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 0 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 1 1-2.4-2.4l.1-.1a1.7 1.7 0 0 0-1.2-2.9H4a1.7 1.7 0 0 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 1 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2.1a1.7 1.7 0 0 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 1 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 0 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.8Z"></path></svg>
@@ -70,6 +70,20 @@
           <label>Theme / accent colour<input id="settings-accent-color" type="color" value="#087f8c"></label>
           <label>Layout density<select id="settings-density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
           <label>Text size<select id="settings-text-size"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></label>
+          <div class="settings-home-sections">
+            <h3>Customize your home page</h3>
+            <p class="field-help">Choose which sections appear on your dashboard. Changes sync with your account.</p>
+            <div id="home-section-options" class="home-section-options">
+              <label><input type="checkbox" data-home-section-toggle="profile" checked> Study profile</label>
+              <label><input type="checkbox" data-home-section-toggle="tasks" checked> Study task list</label>
+              <label><input type="checkbox" data-home-section-toggle="focus" checked> Focus mode</label>
+              <label><input type="checkbox" data-home-section-toggle="recent" checked> Pick up where you left off</label>
+              <label><input type="checkbox" data-home-section-toggle="leaderboard" checked> Study-group leaderboard</label>
+              <label><input type="checkbox" data-home-section-toggle="courses" checked> Your courses</label>
+              <label><input type="checkbox" data-home-section-toggle="quickstart" checked> Quick start and learning record</label>
+            </div>
+            <p id="home-customization-status" class="message" role="status" aria-live="polite"></p>
+          </div>
         </details>
         <details class="settings-section"><summary>Notifications</summary>
           <label class="settings-switch"><span>Group announcements</span><input id="settings-announcements" type="checkbox"></label>
@@ -128,11 +142,11 @@
 <section id="app-view" class="hidden">
 <section id="page-home" class="page">
   <div class="welcome-banner"><div><p class="eyebrow">METROS STUDY HUB</p><h1>Study smarter, together.</h1><p>Choose a course, practise with a quiz, then review your progress.</p></div><div class="banner-mark">M+</div></div>
-  <section class="home-profile panel" aria-label="Your study profile">
-    <div><p class="eyebrow">YOUR STUDY PROFILE</p><h2 id="home-display-name">Student</h2><p id="home-class-name">Class / year not set</p></div>
+  <section class="home-profile panel" data-home-section="profile" aria-label="Your study profile">
+    <div class="home-profile-identity"><span id="home-profile-avatar" class="home-profile-avatar" aria-hidden="true"><span class="avatar-initials">S</span><img class="avatar-image hidden" alt=""></span><div><p class="eyebrow">YOUR STUDY PROFILE</p><h2 id="home-display-name">Student</h2><p id="home-class-name">Class / year not set</p></div></div>
     <div class="home-rank"><span>Leaderboard rank</span><strong id="home-leaderboard-rank">—</strong><small id="home-leaderboard-label">Overall verified scores</small></div>
   </section>
-  <section class="panel study-planner" aria-labelledby="study-planner-heading">
+  <section class="panel study-planner" data-home-section="tasks" aria-labelledby="study-planner-heading">
     <div class="study-planner-heading"><div><p class="eyebrow">YOUR NEXT STEPS</p><h2 id="study-planner-heading">Study task list</h2><p id="study-task-summary" class="muted">Plan a few focused tasks for your next study session.</p></div><button id="study-task-clear-completed" class="button button-outline hidden" type="button">Clear completed</button></div>
     <form id="study-task-form" class="study-task-form">
       <label for="study-task-title">Study task<input id="study-task-title" type="text" maxlength="120" required placeholder="e.g. Review upper limb anatomy"></label>
@@ -142,9 +156,11 @@
     <p id="study-task-status" class="message" role="status" aria-live="polite"></p>
     <ul id="study-task-list" class="study-task-list" aria-label="Your study tasks"></ul>
   </section>
-  <section id="home-leaderboard" class="panel home-leaderboard"><div class="leaderboard-heading"><div><h2>Study-group leaderboard</h2><p class="muted">Rankings start after three opted-in students have verified scores; all eligible students are shown.</p></div><button class="button button-outline" type="button" data-go="progress">View all rankings</button></div><div id="home-leaderboard-content" class="home-leaderboard-list"><p class="muted loading-inline" aria-live="polite"><span class="refresh-spinner" aria-hidden="true"></span>Loading rankings…</p></div></section>
-  <h2 class="section-heading">Your courses</h2><div id="course-grid" class="course-grid"></div>
-  <div class="two-column"><article class="panel"><h3>Quick start</h3><p>Open a quiz or visit the resource library for notes, textbooks and selected video lessons.</p><button class="button button-primary" data-go="quizzes">Explore quizzes</button></article>
+  <section class="panel focus-mode-card" data-home-section="focus" aria-labelledby="focus-mode-heading"><div><p class="eyebrow">A QUIET STUDY SESSION</p><h2 id="focus-mode-heading">Focus mode</h2><p>Hide distractions while you work through a timed study session.</p></div><button id="focus-mode-open" class="button button-primary" type="button">Start a focus session</button></section>
+  <section class="panel recent-items-panel" data-home-section="recent" aria-labelledby="recent-items-heading"><div class="leaderboard-heading"><div><h2 id="recent-items-heading">Pick up where you left off</h2><p class="muted">Reopen recently visited Google Forms and study resources. Google Forms answer drafts depend on the form owner's settings.</p></div></div><div id="recent-items-list" class="recent-items-list"><p class="muted">Your recent items will appear here as you study.</p></div><p id="recent-items-status" class="message" role="status" aria-live="polite"></p></section>
+  <section id="home-leaderboard" class="panel home-leaderboard" data-home-section="leaderboard"><div class="leaderboard-heading"><div><h2>Study-group leaderboard</h2><p class="muted">Rankings start after three opted-in students have verified scores; all eligible students are shown.</p></div><button class="button button-outline" type="button" data-go="progress">View all rankings</button></div><div id="home-leaderboard-content" class="home-leaderboard-list"><p class="muted loading-inline" aria-live="polite"><span class="refresh-spinner" aria-hidden="true"></span>Loading rankings…</p></div></section>
+  <section id="home-courses-section" data-home-section="courses"><h2 class="section-heading">Your courses</h2><div id="course-grid" class="course-grid"></div></section>
+  <div class="two-column" data-home-section="quickstart"><article class="panel"><h3>Quick start</h3><p>Open a quiz or visit the resource library for notes, textbooks and selected video lessons.</p><button class="button button-primary" data-go="quizzes">Explore quizzes</button></article>
   <article class="panel"><h3>Your learning record</h3><p>Your personal scores are private. Only verified scores from the Google Forms integration count toward official group rankings.</p><button class="button button-outline" data-go="progress">View progress</button></article></div>
   <button id="chat-launch" class="chat-launch" type="button" aria-label="Open study-group chat" title="Study-group chat" aria-controls="group-chat-panel" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-5 4v-4.6a2.5 2.5 0 0 1-1-1.9z"></path></svg></button>
   <section id="group-chat-panel" class="group-chat-panel hidden" role="dialog" aria-label="Study-group chat">
@@ -244,13 +260,45 @@
   <p class="fine-print">Only share materials you own or have permission to distribute. For copyrighted textbooks, link to authorised sources.</p>
 </section>
 
-<section id="page-profile" class="page hidden"><div class="page-heading"><div><p class="eyebrow">ACCOUNT SETTINGS</p><h1>My profile</h1><p>Choose how you appear in the study group and customize your website colour.</p></div></div>
-  <div class="panel profile-panel"><form id="profile-form" class="profile-form">
+<section id="page-profile" class="page hidden" aria-labelledby="profile-page-heading"><div class="page-heading"><div><p class="eyebrow">YOUR STUDY IDENTITY</p><h1 id="profile-page-heading">My profile</h1><p>Your study profile, learning preferences and account details.</p></div></div>
+  <section class="profile-hero panel" aria-labelledby="profile-hero-name">
+    <div class="profile-cover" aria-hidden="true"><img id="profile-cover-image" class="profile-cover-photo hidden" alt=""><span class="profile-cover-mark">METROS <b>+</b></span></div>
+    <div class="profile-hero-content">
+      <div class="profile-avatar" aria-hidden="true"><span id="profile-avatar-initials" class="avatar-initials">S</span><img id="profile-avatar-image" class="avatar-image hidden" alt=""></div>
+      <div class="profile-identity">
+        <p class="eyebrow">MEDICAL STUDENT</p><h2 id="profile-hero-name">Student</h2>
+        <p id="profile-hero-academic">Medical school not set <span aria-hidden="true">·</span> Year of study not set</p>
+        <p id="profile-hero-interest">Specialty interest not set</p>
+        <span class="profile-member-badge"><span aria-hidden="true">●</span> METROS member</span>
+      </div>
+      <div class="profile-hero-actions"><button class="button button-primary" id="edit-profile-button" type="button">Edit Profile</button><button class="button button-outline" type="button" data-go="progress">View progress</button></div>
+    </div>
+  </section>
+  <div class="profile-tabs" role="tablist" aria-label="Profile sections">
+    <button class="profile-tab active" id="profile-tab-button-overview" type="button" role="tab" aria-selected="true" aria-controls="profile-tab-overview" data-profile-tab="overview">Overview &amp; Bio</button>
+    <button class="profile-tab" id="profile-tab-button-progress" type="button" role="tab" aria-selected="false" aria-controls="profile-tab-progress" data-profile-tab="progress">Study Progress</button>
+    <button class="profile-tab" id="profile-tab-button-resources" type="button" role="tab" aria-selected="false" aria-controls="profile-tab-resources" data-profile-tab="resources">Saved Resources</button>
+    <button class="profile-tab" id="profile-tab-button-groups" type="button" role="tab" aria-selected="false" aria-controls="profile-tab-groups" data-profile-tab="groups">Study Groups</button>
+  </div>
+  <section class="profile-tab-panel" id="profile-tab-overview" role="tabpanel" aria-labelledby="profile-tab-button-overview">
+    <section class="profile-overview-grid" aria-label="Study profile details">
+      <article class="panel profile-detail-card"><span class="profile-detail-icon" aria-hidden="true">▦</span><p class="eyebrow">MEDICAL SCHOOL</p><h3 id="profile-overview-school">Not set</h3><p>Your medical school or institution.</p></article>
+      <article class="panel profile-detail-card"><span class="profile-detail-icon" aria-hidden="true">✦</span><p class="eyebrow">YEAR OF STUDY</p><h3 id="profile-overview-class">Not set</h3><p>Your current year or class.</p></article>
+      <article class="panel profile-detail-card"><span class="profile-detail-icon" aria-hidden="true">＋</span><p class="eyebrow">SPECIALTY INTEREST</p><h3 id="profile-overview-interest">Not set</h3><p>Clinical area or subject you are exploring.</p></article>
+    </section>
+  <div class="panel profile-panel" id="profile-editor"><form id="profile-form" class="profile-form">
     <div class="profile-section-heading"><h2>Personal details</h2><p>Add a few details to personalize your study profile.</p></div>
+    <div class="profile-photo-control">
+      <div><h3>Profile picture</h3><p>Your photo is resized before upload and visible to signed-in study hub members wherever your avatar appears.</p><label class="profile-banner-toggle"><input id="profile-banner-photo" type="checkbox" checked> Use my profile photo in the header banner</label><p class="field-help">Turn this off to keep your photo on your avatar and use your theme colours for the banner.</p></div>
+      <div class="profile-photo-actions"><label class="button button-outline profile-photo-upload" for="profile-picture">Choose image<input id="profile-picture" type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="sr-only"></label><button class="button button-light" id="remove-profile-picture" type="button">Remove photo</button></div>
+    </div>
+    <p id="profile-photo-message" class="message" role="status" aria-live="polite"></p>
     <div class="profile-fields">
       <label>Display name<input id="display-name" required maxlength="40" autocomplete="nickname" placeholder="How classmates know you"></label>
-      <label>Class / year<input id="class-name" maxlength="60" placeholder="e.g. Year 2"></label>
-      <label>Favourite subject<select id="favorite-subject"></select></label>
+      <label>Medical school<input id="medical-school" maxlength="100" placeholder="Your medical school"></label>
+      <label>Year of study<input id="class-name" maxlength="60" placeholder="e.g. Year 2"></label>
+      <label>Favourite course<select id="favorite-subject"></select></label>
+      <label>Clinical / specialty interest<input id="specialty-interest" maxlength="80" placeholder="e.g. Internal Medicine"></label>
       <label>Quiz rank (optional)<input id="quiz-rank" maxlength="30" placeholder="e.g. 1st place, Top 10"><span class="field-help">A personal note only; it does not affect verified group rankings.</span></label>
     </div>
     <div class="profile-preferences">
@@ -264,6 +312,22 @@
     <div class="profile-actions"><button class="button button-primary" type="submit">Save profile</button></div>
   </form><p id="profile-message" class="message" role="status"></p>
   </div>
+  </section>
+  <section class="profile-tab-panel hidden" id="profile-tab-progress" role="tabpanel" aria-labelledby="profile-tab-button-progress" hidden>
+    <div class="profile-metric-grid">
+      <article class="panel profile-metric-card"><span class="eyebrow">STUDY STREAK</span><strong id="profile-metric-streak">0 days</strong><p>Consecutive days returning to your study hub.</p></article>
+      <article class="panel profile-metric-card"><span class="eyebrow">QUIZZES COMPLETED</span><strong id="profile-metric-quizzes">0</strong><p>Personal practice results recorded.</p></article>
+      <article class="panel profile-metric-card"><span class="eyebrow">COURSES PRACTISED</span><strong id="profile-metric-courses">0 / 5</strong><p>Different courses with recorded quiz results.</p></article>
+      <article class="panel profile-metric-card"><span class="eyebrow">STUDY GROUP CHAT</span><strong id="profile-metric-groups">Available</strong><p>Your shared study-group conversation.</p></article>
+    </div>
+    <a class="button button-primary" href="#" data-go="progress">Open full study progress</a>
+  </section>
+  <section class="profile-tab-panel hidden" id="profile-tab-resources" role="tabpanel" aria-labelledby="profile-tab-button-resources" hidden>
+    <div class="panel profile-saved-resources"><div class="profile-section-heading"><h2>Saved resources</h2><p>Keep useful notes, references and videos close at hand.</p></div><div id="profile-saved-resources-list" class="profile-saved-resource-list"><p class="muted">Loading your saved resources…</p></div><p id="profile-saved-status" class="message" role="status" aria-live="polite"></p><button class="button button-outline" type="button" data-go="resources">Browse study resources</button></div>
+  </section>
+  <section class="profile-tab-panel hidden" id="profile-tab-groups" role="tabpanel" aria-labelledby="profile-tab-button-groups" hidden>
+    <div class="panel profile-groups-panel"><p class="eyebrow">LEARN TOGETHER</p><h2>Study groups</h2><h3>MedStudy Hub group chat</h3><p>Discuss revision plans and share study tips with other signed-in students. Keep messages free of private or patient-identifiable information.</p><button id="profile-open-group-chat" class="button button-primary" type="button">Open study-group chat</button><p id="profile-group-status" class="message" role="status"></p></div>
+  </section>
   <div class="panel"><h2>Account security</h2><p>We can send a password-reset link to your registered email address.</p><button class="button button-outline" id="profile-reset-password">Send password reset email</button><p id="security-message" class="message" role="status"></p></div>
   <div class="panel danger-panel"><h2>Delete my account</h2><p>Deleting your account permanently removes your profile and quiz history. This action cannot be undone.</p><button class="button button-danger" id="delete-account">Permanently delete my account</button></div>
 </section>
@@ -384,6 +448,19 @@
     <div class="streak-modal-count"><strong id="streak-modal-count">0</strong><span>day streak</span></div>
     <p id="streak-modal-status" class="field-help" role="status"></p>
     <button id="streak-modal-done" class="button button-primary full-width" type="button">Continue studying</button>
+  </section>
+</div>
+<div id="focus-modal" class="focus-modal" aria-hidden="true">
+  <section class="focus-dialog" role="dialog" aria-modal="true" aria-labelledby="focus-dialog-title" aria-describedby="focus-dialog-description">
+    <button id="focus-modal-close" class="icon-button focus-modal-close" type="button" aria-label="Close focus mode">×</button>
+    <p class="eyebrow">STUDY WITH INTENTION</p><h2 id="focus-dialog-title">Focus mode</h2>
+    <p id="focus-dialog-description">Set a duration, start the timer, and give one task your attention.</p>
+    <label class="focus-duration-control">Focus duration in minutes<input id="focus-duration" type="number" min="1" max="180" step="1" value="25"></label>
+    <p id="focus-phase-label" class="focus-phase-label" aria-live="polite">Ready for a focus session</p>
+    <div id="focus-timer-display" class="focus-timer-display" role="timer" aria-live="off">25:00</div>
+    <div class="focus-controls"><button id="focus-start" class="button button-primary" type="button">Start</button><button id="focus-pause" class="button button-outline" type="button" disabled>Pause</button><button id="focus-reset" class="button button-outline" type="button">Reset</button></div>
+    <button id="focus-break" class="text-button focus-break-button" type="button">Start a 5-minute break</button>
+    <p id="focus-save-status" class="message" role="status" aria-live="polite"></p>
   </section>
 </div>
 <div id="live-notice-region" class="live-notice-region" aria-live="polite" aria-atomic="true"></div>
