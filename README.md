@@ -74,6 +74,20 @@ The Google Apps Script sends scored form submissions, including each graded ques
 
 # STEP-BY-STEP SETUP
 
+## Guest and Member access
+
+Each registered profile is assigned `role = 'member'` by default. An administrator can open **Admin dashboard → Users and website activity**, select **Guest** in a user's role selector, and optionally toggle Gems. Guest mode sets `gems_enabled = false` automatically. Disabled Gems block purchases, spending, and achievement Gem claims; an administrator can re-enable Gems after changing the account back to Member.
+
+Guest users can take quizzes and save private quiz progress, but their submissions are marked `is_verified = false` and private. The website hides the leaderboard, AI tools, group chat, study resources, Gems Shop, achievements and public profile navigation for Guests. Guest users cannot open another user's public profile.
+
+Member and admin users can open member leaderboard rows and public profiles. RLS blocks Guest users from reading or appearing in public member leaderboards and blocks them from published resources and shared chat/storage areas. The migration also blocks guests from reading other users' profiles and quiz submissions. Public storage reads are limited to the `app-assets` bucket; member-only restricted documents remain in private buckets.
+
+Apply `supabase/migrations/20261124_phase_gems_roles_shop.sql`, `supabase/migrations/20261124_achievement_podium_streak_profiles.sql`, then `supabase/migrations/20261124_achievement_xp_progression.sql` in the Supabase SQL Editor after backing up the database. Review each migration and refresh the app session after applying them. The achievement migration adds average, weekly-champion and quiz/course podium rules, and removes class and favourite-course fields from the public profile view. Podiums use verified scores from leaderboard-opted-in members; quiz podiums compare each student's best score for the named quiz, course podiums compare average scores in the named course, and tied places share permanent awards. The weekly champion uses the rolling seven-day leaderboard average. The XP migration awards XP equal to an achievement's Gem reward when it is claimed, backfills previously claimed achievements once, and recalculates levels from total XP: Level 1 plus one level per 100 XP. The streak character can be selected in **Settings → Appearance**, including the **Evolving fire** option, whose flame glow changes color as your streak grows, or left on Evolving buddy. The streak sound can be uploaded from **Admin dashboard → Sound & Media Settings** once that UI has been configured in your deployment.
+
+## Public avatars
+
+Members can choose one of the built-in medical avatar presets or upload a PNG, JPEG, WebP or GIF image under **My profile → Overview & Bio → Profile picture**. Uploaded images are optimized and stored in the public `profile-photos` bucket. A selected upload takes priority over a preset. Removing the upload leaves the selected preset or initials fallback available. Preset and uploaded avatars appear in public member profiles and leaderboard avatars.
+
 ## Part 1 — Create one Supabase project
 
 1. Visit [https://supabase.com](https://supabase.com) and create an account.
@@ -133,15 +147,17 @@ If you previously used an earlier MedStudy Hub database, back it up first, then 
 2. Create your own account using your real email address.
 3. Confirm your email if confirmation is enabled.
 4. Log in.
-5. Test the Home, Classes / exams, Quizzes, Results & Progress, Notes & Videos and My Profile pages. Students can select and save their own website accent colour in My Profile.
+5. Test the Home, Classes / exams, Quizzes, Results & Progress, Achievements, Notes & Videos and My Profile pages. Students can select and save their own website accent colour in My Profile.
 
 Do not double-click `index.html` to open it as a `file://` page; use a local web server.
 
 ### Ethora medical study assistant
 
-The homepage loads the Ethora AI assistant asynchronously from its official widget script. This is a static site, so there is no `.env` build step; the public app ID provided for this site is stored in `ethora-config.js`. App IDs are public identifiers, not secrets.
+The home page shows an explicit AI assistant launcher for eligible members. It does not load the widget or spend Gems on page load. Selecting **Open AI assistant** asks for confirmation before charging 10 Gems once for that page session. This is a static site, so there is no `.env` build step; the public app ID provided for this site is stored in `ethora-config.js`. App IDs are public identifiers, not secrets.
 
 The launcher is configured for the left side. In the Ethora dashboard, configure the assistant's name, knowledge and instructions for study support: explain concepts and help with exam revision, cite its knowledge sources where possible, and do not diagnose, prescribe, or give patient-specific advice. Do not upload identifiable patient information or encourage students to enter it. Ethora documents Shadow DOM style isolation, so the widget should not clash with this site's CSS.
+
+The Home and Results & Progress leaderboards re-query Supabase every 30 seconds while visible; enabling Supabase Realtime is not required for this refresh behavior. Realtime profile updates may arrive sooner when the project's publication is enabled.
 
 No Content Security Policy (CSP) header or policy is configured in this project. If your hosting provider adds a strict CSP, allow `https://app.chat.ethora.com` in `script-src` and `https://api.chat.ethora.com` in `connect-src`; check the browser's CSP errors and Ethora's current integration guidance for any additional origins needed by the widget. The project does not add a CSP header itself.
 
@@ -290,17 +306,20 @@ Repeat the Apps Script setup for each separate Google Form. The Google Form resp
 
 Account deletion and administrator user management use server-side Edge Functions so the service-role key is never exposed in the website. Deploy both:
 
-1. From the project folder, run:
+The function source is included in `supabase/functions/admin-user-management/` and `supabase/functions/delete-account/`.
 
+1. From the `MedStudy_Hub_Final` folder, install the Supabase CLI if needed and sign in with `supabase login`.
+2. Link the project if it is not already linked, then deploy both functions:
    ```bash
-   supabase functions deploy delete-account
-   supabase functions deploy admin-user-management
+   supabase link --project-ref qiwqluwtmpflmekgjiob
+   supabase functions deploy delete-account --project-ref qiwqluwtmpflmekgjiob
+   supabase functions deploy admin-user-management --project-ref qiwqluwtmpflmekgjiob
    ```
-
-2. Administrators can invite users by email, ban or restore sign-in access, inspect recent activity, and permanently delete non-admin accounts from **Admin dashboard → Users and website activity**. Invitations use Supabase's configured email templates and redirect URL; invitees finish setup from the email. Banning blocks future sign-ins, though an already-open session can remain usable until its access token expires.
-3. Admin deletion removes the Auth account. Database foreign-key rules then delete that user's profile, results, messages and activity records. Administrator accounts are protected from these actions.
-4. The My Profile deletion button still lets each student delete their own account.
-5. Test invitations, banning, restoration and deletion with disposable accounts before inviting your study group.
+   The CLI uses Supabase's server-side function secrets; never put the service-role key in the website or source code.
+3. Administrators can invite users by email, ban or restore sign-in access, inspect recent activity, and permanently delete non-admin accounts from **Admin dashboard → Users and website activity**. Invitations use Supabase's configured email templates and redirect URL; invitees finish setup from the email. Banning blocks future sign-ins, though an already-open session can remain usable until its access token expires.
+4. Admin deletion removes the Auth account. Database foreign-key rules then delete that user's profile, results, messages and activity records. Administrator accounts are protected from these actions.
+5. The My Profile deletion button still lets each student delete their own account.
+6. Test invitations, banning, restoration and deletion with disposable accounts before inviting your study group.
 
 ## Part 9 — Deploy the website for your group
 

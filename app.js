@@ -30,9 +30,28 @@ const FEATURE_OPTIONS = [
   ["schedule_reminders","In-app class and exam reminders"],
   ["phone_class_notifications","Phone notifications for class start/end"]
 ];
+const STREAK_MASCOTS=[
+  {id:"chick",days:0,symbol:"🐣",name:"Chick"},
+  {id:"fox",days:3,symbol:"🦊",name:"Fox"},
+  {id:"panda",days:7,symbol:"🐼",name:"Panda"},
+  {id:"dragon",days:14,symbol:"🐉",name:"Dragon"},
+  {id:"unicorn",days:30,symbol:"🦄",name:"Unicorn"},
+  {id:"evolving-fire",symbol:"🔥",name:"Evolving flame"},
+  {id:"cat",symbol:"🐱",name:"Cat"},
+  {id:"frog",symbol:"🐸",name:"Frog"},
+  {id:"turtle",symbol:"🐢",name:"Turtle"}
+];
+const STREAK_FIRE_STAGES=[
+  {days:0,name:"Ember",hue:"0deg",glow:"#ff8a00"},
+  {days:3,name:"Golden flame",hue:"24deg",glow:"#ffc247"},
+  {days:7,name:"Verdant flame",hue:"85deg",glow:"#93dc63"},
+  {days:14,name:"Azure flame",hue:"190deg",glow:"#66cfff"},
+  {days:30,name:"Cosmic flame",hue:"285deg",glow:"#c888ff"}
+];
 const DEFAULT_USER_PREFERENCES={
   language:"system",timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC",region:"global",
   darkMode:false,density:"comfortable",textSize:"medium",reduceMotion:false,noAutoplay:true,
+  streakMascot:"evolving",
   highContrast:false,colorVision:"none",announcementAlerts:true,scheduleAlerts:true,quizFavorites:[],savedResourceIds:[],recentItems:[],resourceNotes:{},
   homeSections:{profile:true,tasks:true,focus:true,recent:true,leaderboard:true,courses:true,quickstart:true},focusDurationMinutes:25,weeklyQuizGoal:3,
   quietHours:false,quietStart:"22:00",quietEnd:"07:00",dailyPopupLimit:6,activityConsent:true,profileBannerPhoto:true
@@ -40,7 +59,8 @@ const DEFAULT_USER_PREFERENCES={
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const loadingMessage = text => `<p class="muted loading-inline skeleton-loading" role="status" aria-live="polite"><span class="sr-only">${esc(text)}</span><span class="skeleton-line"></span><span class="skeleton-line skeleton-line-short"></span></p>`;
-let currentUser=null,isAdmin=false,activityResetSyncAvailable=false,profileAcademicFieldsAvailable=true,authMode="login",quizzes=[],resources=[],adminQuizzes=[],adminResources=[],attempts=[],notifications=[],calendarNotifications=[],classSessions=[],mbExams=[],groupChatMessages=[],groupChatPresence=[],featureSettings=Object.fromEntries(FEATURE_OPTIONS.map(([key])=>[key,true])),userPreferences={...DEFAULT_USER_PREFERENCES},studyStreak={current:0,longest:0,lastActiveDate:null,syncStatus:""},studyTasks=[],studyTasksAvailable=true,streakCheckPending=false,queuedLiveNotices=[],scheduleDataLoaded=false,scheduleLoadError=null,notificationReadIds=new Set(),notificationRefreshTimer=null,chatRefreshTimer=null,chatHeartbeatTimer=null,chatTypingTimer=null,chatRecorder=null,chatRecordingStream=null,chatRecordingChunks=[],chatRecordingBlob=null,chatRecordingUrl=null,chatRecordingTimer=null,chatRecordingStartedAt=0,chatRecordingCancelled=false,chatAudioUrlCache=new Map(),activeBoard="overall",chart=null,resourceRenderId=0,recentRenderId=0,focusTimerInterval=null,focusEndsAt=0,focusRemainingSeconds=0,focusTimerPhase="focus",focusSessionStarted=false,activeTimetableDay=0,liveNoticeTimer=null,usageTimer=null,usageLastTick=null,activityPendingSeconds=0,activityLoggingUnavailable=false,adminUserRows=[],adminUserPage=1,adminUsersHaveMore=false,toastTimer=null,sessionExpiryTimer=null,sessionExpiryInProgress=false,fallbackSessionStartedAt=null,fallbackSessionUserId=null,profilePhotoFallback=null;
+let currentUser=null,isAdmin=false,currentProfileRole="member",currentProfileGems=0,currentProfileLevel=1,currentProfileGemsEnabled=true,currentProfileGemSettings={unlocked_items:[],equipped_items:{}},selectedPresetAvatar="",unlockedQuizIds=new Set(),activityResetSyncAvailable=false,profileAcademicFieldsAvailable=true,authMode="login",quizzes=[],resources=[],adminQuizzes=[],adminResources=[],attempts=[],notifications=[],calendarNotifications=[],classSessions=[],mbExams=[],groupChatMessages=[],groupChatPresence=[],featureSettings=Object.fromEntries(FEATURE_OPTIONS.map(([key])=>[key,true])),userPreferences={...DEFAULT_USER_PREFERENCES},studyStreak={current:0,longest:0,lastActiveDate:null,syncStatus:""},studyTasks=[],studyTasksAvailable=true,streakCheckPending=false,queuedLiveNotices=[],scheduleDataLoaded=false,scheduleLoadError=null,notificationReadIds=new Set(),notificationRefreshTimer=null,chatRefreshTimer=null,chatHeartbeatTimer=null,chatTypingTimer=null,chatRecorder=null,chatRecordingStream=null,chatRecordingChunks=[],chatRecordingBlob=null,chatRecordingUrl=null,chatRecordingTimer=null,chatRecordingStartedAt=0,chatRecordingCancelled=false,chatAudioUrlCache=new Map(),activeBoard="overall",chart=null,resourceRenderId=0,recentRenderId=0,focusTimerInterval=null,focusEndsAt=0,focusRemainingSeconds=0,focusTimerPhase="focus",focusSessionStarted=false,activeTimetableDay=0,liveNoticeTimer=null,usageTimer=null,usageLastTick=null,activityPendingSeconds=0,activityLoggingUnavailable=false,adminUserRows=[],adminUserPage=1,adminUsersHaveMore=false,toastTimer=null,sessionExpiryTimer=null,sessionExpiryInProgress=false,fallbackSessionStartedAt=null,fallbackSessionUserId=null,profilePhotoFallback=null,shopCategory="themes",shopRarity="All";
+let currentProfileXp=0,currentProfileVisuals={avatar_url:null,equipped_items:{}},publicProfileVisuals=new Map(),shopPreviewTimer=null;
 const CHAT_AUDIO_BUCKET="group-chat-audio";
 const CHAT_MAX_VOICE_SECONDS=60;
 const CHAT_MAX_VOICE_BYTES=5*1024*1024;
@@ -125,6 +145,7 @@ function sanitizeUserPreferences(saved={}){
   if(!["comfortable","compact"].includes(merged.density))merged.density="comfortable";
   if(!["small","medium","large"].includes(merged.textSize))merged.textSize="medium";
   if(!["none","blue-orange","monochrome"].includes(merged.colorVision))merged.colorVision="none";
+  if(merged.streakMascot!=="evolving"&&!STREAK_MASCOTS.some(mascot=>mascot.id===merged.streakMascot))merged.streakMascot="evolving";
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(merged.quietStart))merged.quietStart="22:00";
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(merged.quietEnd))merged.quietEnd="07:00";
   merged.dailyPopupLimit=Math.max(1,Math.min(20,Number.parseInt(merged.dailyPopupLimit,10)||6));
@@ -199,6 +220,8 @@ function applyUserPreferences(){
   applyHomeSectionPreferences();
   if($("focus-duration"))$("focus-duration").value=String(userPreferences.focusDurationMinutes);
   renderNotifications();
+  applyCurrentShopTheme();
+  updateStreakMascots(studyStreak.current);
 }
 function renderHomeSectionOptions(){
   document.querySelectorAll("[data-home-section-toggle]").forEach(input=>{
@@ -218,6 +241,7 @@ function fillSettingsForm(){
   $("settings-timezone").value=userPreferences.timeZone;
   $("settings-region").value=userPreferences.region;
   $("settings-dark-mode").checked=userPreferences.darkMode;
+  $("settings-streak-mascot").value=userPreferences.streakMascot;
   $("settings-density").value=userPreferences.density;
   $("settings-text-size").value=userPreferences.textSize;
   $("settings-announcements").checked=userPreferences.announcementAlerts;
@@ -514,23 +538,74 @@ function addCalendarNotice(id,title,body,expiresAt){
 }
 function closeStreakCelebration(){
   const modal=$("streak-modal");if(!modal)return;
+  modal.querySelector("[data-streak-mascot]")?.classList.remove("is-celebrating");
   modal.classList.remove("is-open");modal.setAttribute("aria-hidden","true");document.body.classList.remove("dialog-open");
   flushQueuedLiveNotices();
+}
+function updateStreakMascots(days,selection=userPreferences.streakMascot){
+  const stages=STREAK_MASCOTS.filter(item=>Number.isFinite(item.days));
+  const fireStage=[...STREAK_FIRE_STAGES].reverse().find(stage=>days>=stage.days)||STREAK_FIRE_STAGES[0];
+  const evolvingFire=selection==="evolving-fire";
+  const mascot=evolvingFire
+    ?{symbol:"🔥",name:fireStage.name}
+    :selection==="evolving"
+    ?[...stages].reverse().find(item=>days>=item.days)||stages[0]
+    :STREAK_MASCOTS.find(item=>item.id===selection)||stages[0];
+  document.querySelectorAll("[data-streak-mascot]").forEach(element=>{
+    element.textContent=mascot.symbol;
+    element.title=evolvingFire?`${mascot.name} · ${Math.max(0,days)}-day streak`:`${mascot.name} study buddy`;
+    element.classList.toggle("streak-mascot-fire",evolvingFire);
+    if(evolvingFire){
+      element.style.setProperty("--streak-fire-hue",fireStage.hue);
+      element.style.setProperty("--streak-fire-glow",fireStage.glow);
+    }else{
+      element.style.removeProperty("--streak-fire-hue");
+      element.style.removeProperty("--streak-fire-glow");
+    }
+  });
+  return mascot;
 }
 function showStreakCelebration(shouldShow,wasReset=false){
   if(!shouldShow)return;
   const count=studyStreak.current;
-  $("streak-modal-title").textContent=wasReset?"Let's start a new streak!":count===1?"Your first day starts today!":"Your streak is on fire!";
+  const mascot=updateStreakMascots(count);
+  $("streak-modal-title").textContent=wasReset?"Let's start a new streak!":count===1?"Your first day starts today!":`${mascot.name}, that's a streak!`;
   $("streak-modal-description").textContent=wasReset
     ?"Your previous streak ended after a missed day. Today is day one of a fresh start."
-    :count===1?"You checked in today. Come back tomorrow to keep your streak going.":`You've studied on ${count} consecutive days. Keep showing up each day!`;
+    :count===1?"You checked in today. Come back tomorrow to keep your streak going.":`You've studied on ${count} consecutive days. Your ${mascot.name.toLowerCase()} study buddy is cheering you on!`;
   $("streak-modal-count").textContent="0";
   $("streak-modal-status").textContent=studyStreak.syncStatus;
-  const modal=$("streak-modal");modal.classList.add("is-open");modal.setAttribute("aria-hidden","false");document.body.classList.add("dialog-open");
+  if(wasReset){
+    const restore=$("restore-streak-gems");
+    if(restore)restore.classList.remove("hidden");
+  }
+  const modal=$("streak-modal"),modalMascot=modal.querySelector("[data-streak-mascot]");
+  modal.classList.add("is-open");modal.setAttribute("aria-hidden","false");document.body.classList.add("dialog-open");
+  modalMascot.classList.remove("is-celebrating");void modalMascot.offsetWidth;modalMascot.classList.add("is-celebrating");
   animateCountUp($("streak-modal-count"),count);
+  void playStreakSound();
+}
+let streakSoundAudio=null;
+async function playStreakSound(){
+  try{
+    const {data}=await db.from("app_settings").select("value").eq("key","streak_sound_url").maybeSingle();
+    if(data?.value){
+      streakSoundAudio=new Audio(data.value);await streakSoundAudio.play();return;
+    }
+  }catch(error){console.info("Using the built-in streak chime.",error)}
+  try{
+    const context=new (window.AudioContext||window.webkitAudioContext)();
+    const oscillator=context.createOscillator(),gain=context.createGain();
+    oscillator.type="sine";oscillator.frequency.setValueAtTime(660,context.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(880,context.currentTime+.12);
+    gain.gain.setValueAtTime(.0001,context.currentTime);gain.gain.exponentialRampToValueAtTime(.12,context.currentTime+.02);
+    gain.gain.exponentialRampToValueAtTime(.0001,context.currentTime+.35);
+    oscillator.connect(gain);gain.connect(context.destination);oscillator.start();oscillator.stop(context.currentTime+.36);
+  }catch(error){console.info("Browser autoplay blocked the streak chime.",error)}
 }
 function renderStudyStreak(){
   const current=Math.max(0,Number(studyStreak.current)||0),longest=Math.max(current,Number(studyStreak.longest)||0);
+  const mascot=updateStreakMascots(current);
   $("streak-chip-count").textContent=String(current);
   $("streak-current-count").textContent="0";$("streak-best-count").textContent="0";
   animateCountUp($("streak-current-count"),current);animateCountUp($("streak-best-count"),longest);
@@ -538,8 +613,8 @@ function renderStudyStreak(){
     ?new Intl.DateTimeFormat(selectedLocale(),{dateStyle:"medium",timeZone:"UTC"}).format(new Date(`${studyStreak.lastActiveDate}T12:00:00Z`))
     :"—";
   $("streak-summary").textContent=current
-    ?`${current} consecutive day${current===1?"":"s"} so far. Your longest streak is ${longest} day${longest===1?"":"s"}.`
-    :"Visit each day to start building your study streak.";
+    ?`${current} consecutive day${current===1?"":"s"} so far. Your ${mascot.name.toLowerCase()} buddy is cheering you on; your longest streak is ${longest} day${longest===1?"":"s"}.`
+    :"Visit each day to meet your study buddy and start building a streak.";
   const progress=current?current%7||7:0;
   $("streak-progress-fill").style.width=`${progress/7*100}%`;
   $("streak-progress").querySelector('[role="progressbar"]').setAttribute("aria-valuenow",String(progress));
@@ -702,31 +777,60 @@ function profilePhotoPublicUrl(userId=currentUser?.id,cacheBust=true){
   const {data}=db.storage.from(PROFILE_PHOTO_BUCKET).getPublicUrl(`${userId}/avatar.webp`);
   return cacheBust?`${data.publicUrl}?v=${Date.now()}`:data.publicUrl;
 }
-function avatarMarkup(name,userId,className="member-avatar"){
+function shopItem(itemId){
+  return (window.SHOP_CATALOG||[]).find(item=>item.id===itemId)||null;
+}
+function avatarTitle(profile){
+  const equipped=profile?.equipped_items||{};
+  const title=shopItem(equipped.title);
+  return title?.slot==="title"?title:null;
+}
+function avatarMarkup(name,userId,className="member-avatar",providedProfile=null){
   const displayName=(name||"Student").trim()||"Student";
   const initials=displayName.split(/\s+/).slice(0,2).map(part=>part.charAt(0).toUpperCase()).join("")||"S";
-  const photo=profilePhotoPublicUrl(userId,false);
-  return `<span class="${esc(className)}${photo?" has-photo":""}" aria-hidden="true"><span class="avatar-initials">${esc(initials)}</span>${photo?`<img class="avatar-image" src="${esc(photo)}" alt="" loading="lazy" onerror="this.parentElement.classList.remove('has-photo');this.remove()">`:""}</span>`;
+  const profile=providedProfile||(userId===currentUser?.id?currentProfileVisuals:publicProfileVisuals.get(userId))||{};
+  const equipped=profile.equipped_items&&typeof profile.equipped_items==="object"?profile.equipped_items:{};
+  const preset=MEDICAL_AVATAR_PRESETS.find(item=>item.id===equipped.avatar);
+  const outfit=shopItem(equipped.outfit||equipped.scrubs);
+  const accessory=shopItem(equipped.accessory);
+  const frame=shopItem(equipped.frame);
+  const photoUrl=typeof profile.avatar_url==="string"&&/^https:\/\//i.test(profile.avatar_url)?profile.avatar_url:null;
+  const localPhoto=userId===currentUser?.id&&typeof profile.avatar_url==="string"&&/^data:image\/(?:png|jpeg|webp|gif);base64,/i.test(profile.avatar_url)?profile.avatar_url:null;
+  const photo=photoUrl||localPhoto;
+  const fallback=preset
+    ?`<span class="avatar-symbol" style="--avatar-color:${preset.color}" aria-label="${esc(preset.label)}">${preset.symbol}</span>`
+    :`<span class="avatar-initials">${esc(initials)}</span>`;
+  const fallbackImage=photoUrl&&userId===currentUser?.id&&profilePhotoFallback?` data-fallback="${esc(profilePhotoFallback)}"`:"";
+  const frameColor=frame?.color||"transparent";
+  const frameClass=frame?` avatar-frame-${esc(frame.id)}`:"";
+  const outfitMark=outfit?`<span class="avatar-cosmetic avatar-outfit" style="--cosmetic-color:${outfit.color||"#087f8c"}" title="${esc(outfit.name)}" aria-hidden="true">${outfit.symbol||"🥼"}</span>`:"";
+  const accessoryMark=accessory?`<span class="avatar-cosmetic avatar-accessory" style="--cosmetic-color:${accessory.color||"#087f8c"}" title="${esc(accessory.name)}" aria-hidden="true">${accessory.symbol||"✦"}</span>`:"";
+  return `<span class="${esc(className)} avatar-mark${frame?" has-frame":""}${frameClass}${photo?" has-photo":""}" style="--avatar-frame:${frameColor};--avatar-bg:${outfit?.color||preset?.color||"var(--mint)"}" aria-hidden="true"><span class="avatar-fallback">${fallback}</span>${photo?`<img class="avatar-image" src="${esc(photo)}" alt="" loading="lazy"${fallbackImage} onerror="if(this.dataset.fallback){this.src=this.dataset.fallback;this.dataset.fallback=''}else{this.parentElement.classList.remove('has-photo');this.remove()}">`:""}${outfitMark}${accessoryMark}</span>`;
 }
 function setProfilePhoto(photo,fallbackPhoto=null){
   const validPhoto=typeof photo==="string"&&(/^data:image\/(?:png|jpeg|webp|gif);base64,/i.test(photo)||/^https:\/\/[^"\s]+$/i.test(photo));
   profilePhotoFallback=fallbackPhoto;
-  document.querySelectorAll(".avatar-image, #profile-cover-image").forEach(image=>{
-    const cover=image.id==="profile-cover-image",parent=image.parentElement;
-    const showPhoto=validPhoto&&(!cover||userPreferences.profileBannerPhoto);
-    image.dataset.fallbackUsed="false";
-    image.onerror=()=>{
-      if(profilePhotoFallback&&image.dataset.fallbackUsed!=="true"){
-        image.dataset.fallbackUsed="true";image.src=profilePhotoFallback;return;
-      }
-      image.classList.add("hidden");
-      if(!cover)parent.classList.remove("has-photo");
-    };
-    image.classList.toggle("hidden",!showPhoto);
-    if(!cover)parent.classList.toggle("has-photo",validPhoto);
-    if(showPhoto)image.src=photo;
-    else image.removeAttribute("src");
-  });
+  currentProfileVisuals.avatar_url=validPhoto?photo:null;
+  renderCurrentAvatar();
+  const cover=$("profile-cover-image");
+  if(cover){
+    const showPhoto=validPhoto&&userPreferences.profileBannerPhoto;
+    cover.classList.toggle("hidden",!showPhoto);
+    if(showPhoto){cover.onerror=()=>{if(profilePhotoFallback){cover.onerror=null;cover.src=profilePhotoFallback}else cover.classList.add("hidden")};cover.src=photo}
+    else cover.removeAttribute("src");
+  }
+}
+function renderCurrentAvatar(){
+  const displayName=$("display-name")?.value||currentUser?.user_metadata?.full_name||"Student";
+  const markup=avatarMarkup(displayName,currentUser?.id,"profile-avatar-art",currentProfileVisuals);
+  document.querySelectorAll(".user-avatar,.home-profile-avatar,.profile-avatar").forEach(element=>{element.innerHTML=markup});
+  const title=avatarTitle(currentProfileVisuals);
+  const titleElement=$("profile-hero-title");
+  if(titleElement){
+    titleElement.textContent=title?`${title.symbol||""} ${title.name}`.trim():"";
+    if(title?.color)titleElement.style.setProperty("--title-color",title.color);else titleElement.style.removeProperty("--title-color");
+    titleElement.classList.toggle("hidden",!title);
+  }
 }
 function renderProfileOverview(){
   const name=$("display-name").value.trim()||"Student";
@@ -741,6 +845,9 @@ function renderProfileOverview(){
   $("profile-overview-interest").textContent=interest;
 }
 function loadProfilePhoto(userId){
+  return loadProfilePhotoForUser(userId,null);
+}
+function loadProfilePhotoForUser(userId,storedUrl){
   try{
     let localPhoto=localStorage.getItem(profilePhotoKey(userId));
     if(localPhoto&&!/^data:image\/(?:png|jpeg|webp|gif);base64,/i.test(localPhoto)){
@@ -748,7 +855,7 @@ function loadProfilePhoto(userId){
       message("profile-photo-message","Your saved profile picture could not be displayed. Choose a new image or remove it.",true);
       localPhoto=null;
     }
-    const remotePhoto=profilePhotoPublicUrl(userId);
+    const remotePhoto=typeof storedUrl==="string"&&/^https:\/\/[^"\s]+$/i.test(storedUrl)?storedUrl:null;
     setProfilePhoto(remotePhoto||localPhoto,remotePhoto?localPhoto:null);
   }catch(error){
     console.warn("Could not load the saved profile picture.",error);
@@ -756,14 +863,59 @@ function loadProfilePhoto(userId){
     setProfilePhoto(null);
   }
 }
+const MEDICAL_AVATAR_PRESETS=[
+  {id:"doctor-teal",label:"Doctor",symbol:"👨‍⚕️",color:"#087f8c"},
+  {id:"surgeon-navy",label:"Surgeon",symbol:"🥼",color:"#315b78"},
+  {id:"nurse-rose",label:"Nurse",symbol:"👩‍⚕️",color:"#b85f89"},
+  {id:"pharmacist-green",label:"Pharmacist",symbol:"👩‍🔬",color:"#287d62"},
+  {id:"resident-gold",label:"Resident",symbol:"🎓",color:"#967019"},
+  {id:"student-lavender",label:"Medical Student",symbol:"🧑‍⚕️",color:"#8068bd"},
+  {id:"cardio-red",label:"Cardiology",symbol:"❤️",color:"#b43d4a"},
+  {id:"neuro-violet",label:"Neurology",symbol:"🧠",color:"#7657a8"}
+];
+function presetAvatarMarkup(preset,selected=false){
+  return `<button type="button" class="profile-avatar-option ${selected?"is-selected":""}" role="radio" aria-checked="${selected}" data-preset-avatar="${preset.id}" style="--avatar-color:${preset.color}" title="${esc(preset.label)}"><span aria-hidden="true">${preset.symbol}</span><small>${esc(preset.label)}</small></button>`;
+}
+function renderPresetAvatars(){
+  const box=$("profile-avatar-options");
+  if(!box)return;
+  box.innerHTML=MEDICAL_AVATAR_PRESETS.map(preset=>presetAvatarMarkup(preset,selectedPresetAvatar===preset.id)).join("");
+}
+async function selectPresetAvatar(presetId){
+  if(!currentUser)return;
+  const preset=MEDICAL_AVATAR_PRESETS.find(item=>item.id===presetId);
+  if(!preset)return;
+  const equipped={...(currentProfileGemSettings.equipped_items||{}),avatar:presetId};
+  const {error}=await db.from("profiles").update({equipped_items:equipped,avatar_url:null}).eq("id",currentUser.id);
+  if(error){message("profile-avatar-message",error.message,true);return}
+  selectedPresetAvatar=presetId;
+  currentProfileGemSettings.equipped_items=equipped;
+  currentProfileVisuals.equipped_items=equipped;
+  currentProfileVisuals.avatar_url=null;
+  setProfilePhoto(null);
+  document.querySelectorAll(".profile-avatar-option").forEach(button=>{const selected=button.dataset.presetAvatar===presetId;button.classList.toggle("is-selected",selected);button.setAttribute("aria-checked",String(selected))});
+  message("profile-avatar-message",`${preset.label} avatar selected.`);
+  renderPresetAvatars();
+}
+$("profile-avatar-options").addEventListener("click",event=>{
+  const button=event.target.closest("[data-preset-avatar]");
+  if(button)void selectPresetAvatar(button.dataset.presetAvatar);
+});
 function renderProfileMetrics(){
   $("profile-metric-streak").textContent=`${Math.max(0,Number(studyStreak.current)||0)} days`;
   $("profile-metric-quizzes").textContent=String(attempts.length);
   $("profile-metric-courses").textContent=`${new Set(attempts.map(attempt=>attempt.course)).size} / ${COURSES.length}`;
-  const groupsEnabled=featureEnabled("group_chat");
-  $("profile-metric-groups").textContent=groupsEnabled?"1":"Unavailable";
-  $("profile-open-group-chat").disabled=!groupsEnabled;
-  $("profile-group-status").textContent=groupsEnabled?"One shared study-group chat is available.":"Study-group chat is currently unavailable.";
+}
+function renderProfileProgression(){
+  currentProfileXp=Math.max(0,Math.floor(Number(currentProfileXp)||0));
+  currentProfileLevel=1+Math.floor(currentProfileXp/100);
+  const progress=currentProfileXp%100;
+  $("profile-level-value").textContent=`Level ${currentProfileLevel}`;
+  $("profile-xp-value").textContent=`${currentProfileXp} XP`;
+  $("profile-hero-level").textContent=`Level ${currentProfileLevel} · ${currentProfileXp} XP`;
+  $("profile-xp-progress").style.width=`${progress}%`;
+  $("profile-level-panel").querySelector('[role="progressbar"]').setAttribute("aria-valuenow",String(progress));
+  $("profile-next-level").textContent=`${100-progress} XP to Level ${currentProfileLevel+1}. Claim achievements to earn XP.`;
 }
 function renderNotifications(){
   pruneExpiredCalendarNotices();
@@ -1109,6 +1261,7 @@ async function loadNotifications(){
 }
 function closeNavigation(){
   $("main-navigation").classList.remove("is-open");
+  $("main-navigation").setAttribute("aria-hidden","true");
   $("nav-menu-toggle").setAttribute("aria-expanded","false");
   $("nav-menu-toggle").setAttribute("aria-label","Open menu");
   updateDrawerBackdrop();
@@ -1122,6 +1275,7 @@ function openNavigation(){
   closeSettings();closeNotificationPanel();
   $("main-navigation").classList.remove("hidden");
   $("main-navigation").classList.add("is-open");
+  $("main-navigation").setAttribute("aria-hidden","false");
   $("nav-menu-toggle").setAttribute("aria-expanded","true");
   $("nav-menu-toggle").setAttribute("aria-label","Close menu");
   updateDrawerBackdrop();$("nav-menu-close").focus();
@@ -1130,6 +1284,8 @@ function closeSettings(){
   $("settings-drawer").classList.remove("is-open");
   $("settings-drawer").setAttribute("aria-hidden","true");
   $("settings-toggle").setAttribute("aria-expanded","false");
+  $("settings-streak-mascot").value=userPreferences.streakMascot;
+  updateStreakMascots(studyStreak.current,userPreferences.streakMascot);
   updateDrawerBackdrop();
 }
 function openSettings(){
@@ -1274,6 +1430,130 @@ $("focus-start").addEventListener("click",startFocusTimer);
 $("focus-pause").addEventListener("click",pauseFocusTimer);
 $("focus-reset").addEventListener("click",resetFocusTimer);
 $("focus-break").addEventListener("click",startFocusBreak);
+$("focus-floating-start").addEventListener("click",startFocusTimer);
+$("focus-floating-pause").addEventListener("click",pauseFocusTimer);
+$("focus-floating-reset").addEventListener("click",resetFocusTimer);
+$("focus-floating-exit").addEventListener("click",closeFocusMode);
+$("restore-streak-gems").addEventListener("click",async()=>{
+  if(!currentUser)return;
+  const {error}=await db.rpc("restore_streak",{p_cost:50});
+  if(error){message("streak-modal-status",error.message,true);return}
+  message("streak-modal-status","Streak restored.");
+  $("restore-streak-gems").classList.add("hidden");
+  await Promise.all([loadStudyStreak(),loadGemsProfile()]);
+});
+$("streak-sound-test").addEventListener("click",()=>{void playStreakSound()});
+$("streak-sound-save").addEventListener("click",async()=>{
+  if(!isAdmin)return;
+  const file=$("streak-sound-file").files?.[0];
+  if(!file){message("streak-sound-status","Choose an MP3 or WAV file.",true);return}
+  if(!/\.(mp3|wav)$/i.test(file.name)){message("streak-sound-status","Only MP3 and WAV files are supported.",true);return}
+  const path=`streak/${Date.now()}-${file.name.replace(/[^a-z0-9_.-]/gi,"_")}`;
+  const {error:uploadError}=await db.storage.from("app-assets").upload(path,file,{upsert:true,contentType:file.type||undefined});
+  if(uploadError){message("streak-sound-status",uploadError.message,true);return}
+  const {data}=db.storage.from("app-assets").getPublicUrl(path);
+  const {error}=await db.from("app_settings").upsert({key:"streak_sound_url",value:data.publicUrl,updated_at:new Date().toISOString()},{onConflict:"key"});
+  if(error){message("streak-sound-status",error.message,true);return}
+  streakSoundAudio=new Audio(data.publicUrl);
+  message("streak-sound-status","Streak sound saved and active.");
+});
+function configureAchievementRequirementFields(){
+  const type=$("achievement-requirement-type").value;
+  const podium=type==="quiz_podium"||type==="course_podium";
+  const weekly=type==="weekly_top_scorer";
+  const scopeField=$("achievement-requirement-scope-field");
+  const scopeInput=$("achievement-requirement-scope");
+  const valueInput=$("achievement-requirement-value");
+  scopeField.classList.toggle("hidden",!podium);
+  scopeInput.required=podium;
+  scopeInput.placeholder=type==="quiz_podium"?"Exact verified quiz title":"Exact course name";
+  $("achievement-requirement-scope-help").textContent=type==="quiz_podium"
+    ?"Use the verified result's quiz title; podium rank uses each student's best verified percentage."
+    :"Use a course name from the course leaderboard; podium rank uses each student's average verified percentage.";
+  $("achievement-requirement-value-field").classList.toggle("hidden",weekly);
+  $("achievement-requirement-value-help").textContent=podium
+    ?"Set the place to 1, 2 or 3. Tied students share a place."
+    :type==="average_threshold"||type==="score_threshold"
+    ?"Set a percentage from 0 to 100."
+    :"Set the required count.";
+  valueInput.disabled=weekly;
+  valueInput.min=podium?"1":"0";
+  valueInput.max=podium?"3":type==="average_threshold"||type==="score_threshold"?"100":"";
+  valueInput.value=weekly?"1":valueInput.value;
+}
+$("achievement-requirement-type").addEventListener("change",configureAchievementRequirementFields);
+configureAchievementRequirementFields();
+$("achievement-form").addEventListener("submit",async event=>{
+  event.preventDefault();
+  if(!isAdmin)return;
+  const id=$("achievement-id").value;
+  const requirementType=$("achievement-requirement-type").value;
+  const row={
+    title:$("achievement-title").value.trim(),description:$("achievement-description").value.trim(),
+    icon:$("achievement-icon").value.trim()||"🏅",gem_reward:Number($("achievement-gems").value)||0,
+    requirement_type:requirementType,
+    requirement_value:requirementType==="weekly_top_scorer"?1:Number($("achievement-requirement-value").value)||0,
+    requirement_scope:["quiz_podium","course_podium"].includes(requirementType)?$("achievement-requirement-scope").value.trim():null,
+    is_default:false
+  };
+  const result=id?await db.from("achievements").update(row).eq("id",id):await db.from("achievements").insert(row);
+  message("achievement-admin-status",result.error?result.error.message:(id?"Achievement updated.":"Achievement saved."),!!result.error);
+  if(!result.error){event.target.reset();$("achievement-id").value="";configureAchievementRequirementFields();await loadAchievementAdmin()}
+});
+function achievementRequirementSummary(item){
+  const value=Number(item.requirement_value)||0,scope=esc(item.requirement_scope||"");
+  if(item.requirement_type==="quizzes_completed")return `${value} quiz attempts`;
+  if(item.requirement_type==="streak_days")return `${value}-day study streak`;
+  if(item.requirement_type==="score_threshold")return `single score ≥ ${value}%`;
+  if(item.requirement_type==="courses_completed")return `${value} courses`;
+  if(item.requirement_type==="average_threshold")return `average score ≥ ${value}%`;
+  if(item.requirement_type==="weekly_top_scorer")return "weekly leaderboard #1 by average";
+  if(item.requirement_type==="quiz_podium")return `#${value} on quiz “${scope}”`;
+  if(item.requirement_type==="course_podium")return `#${value} in “${scope}”`;
+  return `${esc(item.requirement_type)} ${value}`;
+}
+async function loadAchievementAdmin(){
+  if(!isAdmin||!$("achievement-admin-list"))return;
+  const {data,error}=await db.from("achievements").select("*").order("gem_reward");
+  if(error){message("achievement-admin-status",error.message,true);return}
+  $("achievement-admin-list").innerHTML=(data||[]).map(item=>`<article class="achievement earned"><strong>${esc(item.icon)} ${esc(item.title)}</strong><p>${esc(item.description)}</p><span>${item.gem_reward} Gems · ${achievementRequirementSummary(item)}</span><div class="button-row"><button class="button button-outline" type="button" data-edit-achievement="${esc(item.id)}">Edit</button><button class="button button-danger" type="button" data-delete-achievement="${esc(item.id)}" ${item.is_default?"disabled":""}>Delete</button></div></article>`).join("")||'<p class="muted">No achievements.</p>';
+}
+$("achievement-list").addEventListener("click",async event=>{
+  const button=event.target.closest("[data-claim-achievement]");
+  if(!button||!currentUser)return;
+  button.disabled=true;
+  const {data,error}=await db.rpc("claim_achievement",{p_achievement_id:button.dataset.claimAchievement});
+  if(error){message("achievement-status",error.message,true);button.disabled=false;return}
+  const claimResult=data&&typeof data==="object"&&!Array.isArray(data)&&Number.isFinite(Number(data.gems))?data:null;
+  syncGemBalance(claimResult?claimResult.gems:data,currentProfileGems);
+  if(claimResult){
+    currentProfileXp=Number(claimResult.xp)||0;
+    renderProfileProgression();
+  }
+  await loadGemsProfile();
+  await renderAchievements();
+  message("achievement-status",claimResult
+    ?`Achievement claimed: +${Number(claimResult.gems_awarded)||0} Gems and +${Number(claimResult.xp_awarded)||0} XP. You are Level ${currentProfileLevel}.`
+    :"Achievement Gems claimed. Apply the XP progression migration to enable XP rewards.");
+});
+$("achievement-admin-list").addEventListener("click",async event=>{
+  const edit=event.target.closest("[data-edit-achievement]");
+  const del=event.target.closest("[data-delete-achievement]");
+  if(edit){
+    const {data,error}=await db.from("achievements").select("*").eq("id",edit.dataset.editAchievement).single();
+    if(error){message("achievement-admin-status",error.message,true);return}
+    $("achievement-id").value=data.id;$("achievement-title").value=data.title;$("achievement-description").value=data.description;
+    $("achievement-icon").value=data.icon;$("achievement-gems").value=data.gem_reward;
+    $("achievement-requirement-type").value=data.requirement_type;$("achievement-requirement-value").value=data.requirement_value;
+    $("achievement-requirement-scope").value=data.requirement_scope||"";configureAchievementRequirementFields();
+    $("achievement-form").scrollIntoView({behavior:"smooth"});
+  }else if(del){
+    if(!confirm("Delete this achievement?"))return;
+    const {error}=await db.from("achievements").delete().eq("id",del.dataset.deleteAchievement);
+    if(error){message("achievement-admin-status",error.message,true);return}
+    await loadAchievementAdmin();
+  }
+});
 $("focus-duration").addEventListener("change",()=>{
   const duration=Number($("focus-duration").value);
   if(!Number.isInteger(duration)||duration<1||duration>180){
@@ -1290,15 +1570,18 @@ document.addEventListener("click",event=>{
   if(!event.target.closest(".notification-wrap"))closeNotificationPanel();
   if(!event.target.closest("#main-navigation")&&!event.target.closest("#nav-menu-toggle"))closeNavigation();
   if(!event.target.closest("#settings-drawer")&&!event.target.closest("#settings-toggle"))closeSettings();
+  const publicProfile=event.target.closest("[data-public-profile]");
+  if(publicProfile)void openPublicProfile(publicProfile.dataset.publicProfile,Number(publicProfile.dataset.publicRank)||null);
   const recentLink=event.target.closest("[data-recent-kind][data-recent-id]");
   if(recentLink)recordRecentItem(recentLink.dataset.recentKind,recentLink.dataset.recentId);
 },true);
 document.addEventListener("keydown",event=>{
-  if(event.key==="Escape"){closeNavigation();closeSettings();closeNotificationPanel();closeGroupChat();closeStreakCelebration();closeFocusMode()}
+  if(event.key==="Escape"){closeNavigation();closeSettings();closeNotificationPanel();closeGroupChat();closeStreakCelebration();closeFocusMode();closePublicProfile()}
 });
 function renderFocusTimer(){
   const total=Math.max(0,focusRemainingSeconds),minutes=Math.floor(total/60),seconds=total%60;
   $("focus-timer-display").textContent=`${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}`;
+  if($("focus-floating-time"))$("focus-floating-time").textContent=`${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}`;
   $("focus-phase-label").textContent=focusTimerInterval
     ?focusTimerPhase==="break"?"Break in progress":"Focus session in progress"
     :total===0?focusTimerPhase==="break"?"Break complete. Ready to focus?":"Focus session complete. Well done."
@@ -1307,16 +1590,34 @@ function renderFocusTimer(){
   $("focus-pause").disabled=!focusTimerInterval;
   $("focus-duration").disabled=!!focusTimerInterval||(focusTimerPhase==="break"&&total>0);
 }
+function playFocusTimerChime(){
+  if(currentProfileGemSettings.equipped_items?.chime!=="pomodoro-chimes")return;
+  try{
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+    if(!AudioContextClass)throw new Error("Audio playback is not supported in this browser.");
+    const context=new AudioContextClass(),notes=[659.25,783.99,987.77],start=context.currentTime;
+    notes.forEach((frequency,index)=>{
+      const time=start+index*.2,oscillator=context.createOscillator(),gain=context.createGain();
+      oscillator.type="sine";oscillator.frequency.setValueAtTime(frequency,time);
+      gain.gain.setValueAtTime(.0001,time);gain.gain.exponentialRampToValueAtTime(.12,time+.025);
+      gain.gain.exponentialRampToValueAtTime(.0001,time+.34);
+      oscillator.connect(gain);gain.connect(context.destination);oscillator.start(time);oscillator.stop(time+.35);
+    });
+    window.setTimeout(()=>{void context.close()},1200);
+  }catch(error){console.warn("Could not play the equipped focus timer chime.",error)}
+}
 function openFocusMode(){
   if(!focusSessionStarted&&focusTimerPhase==="focus")focusRemainingSeconds=userPreferences.focusDurationMinutes*60;
   renderFocusTimer();
   $("focus-modal").classList.add("is-open");$("focus-modal").setAttribute("aria-hidden","false");
+  if($("focus-floating-bar"))$("focus-floating-bar").classList.add("is-active");
   document.body.classList.add("dialog-open");$("focus-start").focus();
 }
 function closeFocusMode(){
   const modal=$("focus-modal");if(!modal?.classList.contains("is-open"))return;
   pauseFocusTimer();
   modal.classList.remove("is-open");modal.setAttribute("aria-hidden","true");
+  if($("focus-floating-bar"))$("focus-floating-bar").classList.remove("is-active");
   if(!$("streak-modal").classList.contains("is-open"))document.body.classList.remove("dialog-open");
   $("focus-mode-open").focus({preventScroll:true});
 }
@@ -1333,6 +1634,7 @@ function startFocusTimer(){
     focusRemainingSeconds=Math.max(0,Math.ceil((focusEndsAt-Date.now())/1000));
     if(focusRemainingSeconds===0){
       clearInterval(focusTimerInterval);focusTimerInterval=null;focusSessionStarted=false;
+      playFocusTimerChime();
     }
     renderFocusTimer();
   },250);
@@ -1353,6 +1655,7 @@ function startFocusBreak(){
 }
 function showPage(page,skipDataLoad=false){
   if(page==="admin"&&!isAdmin){showPage("home");return}
+  if(currentProfileRole==="guest"&&["resources","achievements"].includes(page)){showPage("home");return}
   if((page==="quizzes"&&!featureEnabled("quizzes"))||(page==="resources"&&!featureEnabled("resources"))||
     (page==="classes"&&!featureEnabled("classes")&&!featureEnabled("exams"))||
     (page==="progress"&&!featureEnabled("leaderboards")&&!featureEnabled("practice_scores"))){showPage("home");return}
@@ -1367,6 +1670,7 @@ function showPage(page,skipDataLoad=false){
     if(active)n.setAttribute("aria-current","page");else n.removeAttribute("aria-current");
   });
   if(page==="progress"){if(!skipDataLoad){void syncActivityResetMarker();loadAttempts()}if(featureEnabled("leaderboards"))renderLeaderboard()}
+  if(page==="achievements"&&!skipDataLoad)void renderAchievements();
   if(page==="home"&&featureEnabled("leaderboards")&&!skipDataLoad)renderHomeLeaderboard();
   if(page==="resources"){
     if(!skipDataLoad)renderResources();
@@ -1388,7 +1692,8 @@ function signedOut(){
   $("admin-user-activity").classList.add("hidden");$("admin-user-activity-content").textContent="";
   if(currentUser)clearSessionStartedAt(currentUser.id);
   queuedLiveNotices=[];streakCheckPending=false;studyTasks=[];studyTasksAvailable=true;renderStudyTasks();
-  closeGroupChat();closeStreakCelebration();closeFocusMode();closeSettings();currentUser=null;isAdmin=false;activityResetSyncAvailable=false;userPreferences={...DEFAULT_USER_PREFERENCES};studyStreak={current:0,longest:0,lastActiveDate:null,syncStatus:""};notifications=[];calendarNotifications=[];groupChatMessages=[];notificationReadIds=new Set();setProfileIdentity("Student");setProfilePhoto(null);applyUserPreferences();applyThemeColor(DEFAULT_THEME_COLOR);renderStudyStreak();
+  closeGroupChat();closeStreakCelebration();closeFocusMode();closeSettings();currentUser=null;isAdmin=false;currentProfileRole="member";currentProfileGems=0;currentProfileLevel=1;currentProfileGemsEnabled=true;currentProfileGemSettings={unlocked_items:[],equipped_items:{}};currentProfileVisuals={avatar_url:null,equipped_items:{}};selectedPresetAvatar="";publicProfileVisuals.clear();if(shopPreviewTimer){clearTimeout(shopPreviewTimer);shopPreviewTimer=null}activityResetSyncAvailable=false;userPreferences={...DEFAULT_USER_PREFERENCES};studyStreak={current:0,longest:0,lastActiveDate:null,syncStatus:""};notifications=[];calendarNotifications=[];groupChatMessages=[];notificationReadIds=new Set();$("ai-assistant-launch").classList.add("hidden");setProfileIdentity("Student");setProfilePhoto(null);applyUserPreferences();applyThemeColor(DEFAULT_THEME_COLOR);renderGemBalance();renderStudyStreak();
+  currentProfileXp=0;renderProfileProgression();
   groupChatMessages=[];groupChatPresence=[];chatAudioUrlCache.clear();
   closeNavigation();closeNotificationPanel();$("auth-view").classList.remove("hidden");$("app-view").classList.add("hidden");
   $("user-tools").classList.add("hidden");$("main-navigation").classList.add("hidden");$("nav-menu-toggle").classList.add("hidden");$("admin-nav").classList.add("hidden");
@@ -1435,6 +1740,7 @@ async function signedIn(user){
   courseSelects();startUsageTracking();showPage("home",true);
   studyStreak.syncStatus="Checking your streak…";renderStudyStreak();
   streakCheckPending=true;const profileLoad=loadProfile(),streakLoad=profileLoad.catch(error=>console.error("Could not load settings before the study streak.",error)).then(()=>loadStudyStreak());
+  void loadGemsProfile();
   const accessSetup=Promise.allSettled([checkAdmin(),loadFeatureSettings()]);
   const dataLoads=Promise.allSettled([loadContent(),loadAttempts(),profileLoad,loadNotifications(),loadClassAndExamData()]);
   const setupResults=await accessSetup;
@@ -1495,7 +1801,7 @@ function renderBulkQuizRows(){
 renderBulkQuizRows();
 async function loadContent(){
   const [q,r]=await Promise.all([db.from("quizzes").select("*").eq("is_published",true).order("created_at",{ascending:false}),db.from("resources").select("*").eq("is_published",true).order("created_at",{ascending:false})]);
-  if(q.error||r.error){console.error(q.error||r.error);return}quizzes=q.data||[];resources=r.data||[];renderQuizzes();renderResources();renderSavedResources();renderRecentItems();renderCourses();
+  if(q.error||r.error){console.error(q.error||r.error);return}quizzes=q.data||[];resources=r.data||[];renderQuizzes();renderResources();renderRecentItems();renderCourses();
 }
 function recordRecentItem(kind,id){
   if(!currentUser||!["quiz","resource"].includes(kind)||!/^\d+$/.test(String(id)))return;
@@ -1643,12 +1949,32 @@ async function renderHomeLeaderboard(){
   box.setAttribute("aria-busy","true");box.innerHTML=loadingMessage("Loading rankings…");
   try{
     const rows=(await getView("overall_leaderboard")).sort((a,b)=>b.average_percentage-a.average_percentage);
+    await hydratePublicProfileVisuals(rows);
     const rank=rows.findIndex(row=>row.user_id===currentUser.id);
     $("home-leaderboard-rank").innerHTML=rank>=0?rank<3?`${medal(rank+1)} <span>${rank+1}</span>`:`<span class="ordinal-rank">${medal(rank+1)}</span>`:"—";
     $("home-leaderboard-label").textContent=rank>=0?"Your overall rank":$("leaderboard-opt-in").checked?"Waiting for 3 students with verified scores":"Opt in; ranking starts after 3 students qualify";
-    box.innerHTML=rows.length?rows.map((row,index)=>`<div class="home-leader-row"><span class="medal${index>=3?" ordinal-rank":""}">${medal(index+1)}</span>${avatarMarkup(row.display_name,row.user_id,"leader-avatar")}<strong>${esc(row.display_name)}${row.user_id===currentUser.id?" (you)":""}</strong><span>${Number(row.average_percentage).toFixed(1)}%</span></div>`).join(""):'<p class="muted">No rankings yet. At least three opted-in students need a verified score before rankings appear.</p>';
+    box.innerHTML=rows.length?rows.map((row,index)=>{
+      const title=avatarTitle(publicProfileVisuals.get(row.user_id));
+      return `<button type="button" class="home-leader-row leaderboard-member-row" data-public-profile="${esc(row.user_id)}" data-public-rank="${index+1}"><span class="medal${index>=3?" ordinal-rank":""}">${index===0?'🏆':medal(index+1)}</span>${avatarMarkup(row.display_name,row.user_id,"leader-avatar")}<span class="home-leader-name"><strong>${esc(row.display_name)}${row.user_id===currentUser.id?" (you)":""}</strong>${title?`<small style="--title-color:${esc(title.color||"var(--teal)")}">${esc(title.symbol||"")} ${esc(title.name)}</small>`:""}</span><span>${Number(row.average_percentage).toFixed(1)}%</span></button>`;
+    }).join(""):'<p class="muted">No rankings yet. At least three opted-in students need a verified score before rankings appear.</p>';
   }catch(error){box.innerHTML=`<p class="muted">Could not load leaderboard: ${esc(error.message)}</p>`}
-  finally{box.removeAttribute("aria-busy")}
+  finally{
+    box.removeAttribute("aria-busy");
+    if("IntersectionObserver" in window){
+      const observer=new IntersectionObserver(entries=>{
+        entries.forEach(entry=>{
+          if(!entry.isIntersecting)return;
+          entry.target.querySelectorAll(".leaderboard-member-row").forEach((row,index)=>{
+            row.style.transitionDelay=`${Math.min(index*55,330)}ms`;
+            row.classList.add("is-overtaking");
+            setTimeout(()=>row.classList.remove("is-overtaking"),1200);
+          });
+          observer.unobserve(entry.target);
+        });
+      },{threshold:.25});
+      observer.observe(box);
+    }
+  }
 }
 function medal(rank){
   if(rank===1)return "🥇";
@@ -1657,6 +1983,22 @@ function medal(rank){
   const suffix=rank%100>=11&&rank%100<=13?"th":rank%10===1?"st":rank%10===2?"nd":rank%10===3?"rd":"th";
   return `${rank}${suffix}`;
 }
+async function openPublicProfile(userId,rank){
+  if(currentProfileRole==="guest"||!["member","admin"].includes(currentProfileRole))return;
+  const {data,error}=await db.from("member_public_profiles").select("id,display_name,avatar_url,level,xp,equipped_items,school,clinical_interests").eq("id",userId).single();
+  if(error||!data)return;
+  publicProfileVisuals.set(userId,data);
+  const title=avatarTitle(data);
+  const avatar=avatarMarkup(data.display_name,userId,"public-profile-avatar",data);
+  $("public-profile-content").innerHTML=`<div class="public-profile-hero">${avatar}<p class="eyebrow">PUBLIC MEMBER PROFILE</p><h2 id="public-profile-name">${esc(data.display_name||"Student")}</h2>${title?`<p class="public-profile-title" style="--title-color:${esc(title.color||"var(--teal)")}">${esc(title.symbol||"")} ${esc(title.name)}</p>`:""}<div class="public-profile-stats"><span><strong>#${rank||"—"}</strong>Leaderboard rank</span><span><strong>${Number(data.level)||1}</strong>Level</span><span><strong>${Number(data.xp)||0}</strong>XP</span></div><dl><dt>School</dt><dd>${esc(data.school||"Not set")}</dd><dt>Clinical interests</dt><dd>${esc(data.clinical_interests||"Not set")}</dd></dl></div>`;
+  const modal=$("public-profile-modal");modal.classList.add("is-open");modal.setAttribute("aria-hidden","false");document.body.classList.add("dialog-open");
+}
+function closePublicProfile(){
+  const modal=$("public-profile-modal");if(!modal)return;
+  modal.classList.remove("is-open");modal.setAttribute("aria-hidden","true");document.body.classList.remove("dialog-open");
+}
+$("public-profile-close").addEventListener("click",closePublicProfile);
+$("public-profile-modal").addEventListener("click",event=>{if(event.target.id==="public-profile-modal")closePublicProfile()});
 function renderQuizzes(){
   const topicSelect=$("quiz-topic-filter"),previousTopic=topicSelect.value;
   const allTopics=[...new Set(quizzes.flatMap(quiz=>Array.isArray(quiz.topics)?quiz.topics.filter(topic=>typeof topic==="string"&&topic.trim()):[]))]
@@ -1676,7 +2018,20 @@ function renderQuizzes(){
   $("quiz-results-status").textContent=`${rows.length} quiz${rows.length===1?"":"zes"} found.`;
   $("quiz-list").innerHTML=rows.length?rows.map(quiz=>{
     const favorite=favorites.has(String(quiz.id)),topics=Array.isArray(quiz.topics)?quiz.topics:[];
-    return `<article class="content-card"><span class="tag">${esc(quiz.course)} • ${esc(quiz.difficulty||"Practice")}</span><h3>${esc(quiz.title)}</h3><p>${esc(quiz.description||"Open the quiz to begin.")}</p>${topics.length?`<div class="quiz-topic-tags">${topics.map(item=>`<span class="quiz-topic-tag">${esc(item)}</span>`).join("")}</div>`:""}<div class="quiz-card-actions"><a class="button button-primary" href="${esc(quiz.google_form_url)}" target="_blank" rel="noopener noreferrer" data-recent-kind="quiz" data-recent-id="${esc(quiz.id)}">Open Google Form ↗</a><button class="button button-outline quiz-favorite-button" type="button" data-favorite-quiz="${esc(quiz.id)}" aria-pressed="${favorite}" aria-label="${favorite?"Remove from":"Add to"} favorites: ${esc(quiz.title)}">${favorite?"★ Saved":"☆ Save"}</button></div></article>`;
+    const requiredLevel=Number(quiz.required_level)||1,gemCost=Number(quiz.gem_cost)||0;
+    const levelLocked=currentProfileLevel<requiredLevel;
+    const prerequisiteLocked=quiz.prerequisite_quiz_id&&attempts.every(attempt=>String(attempt.quiz_id)!==String(quiz.prerequisite_quiz_id));
+    const gemLocked=gemCost>0&&!unlockedQuizIds.has(String(quiz.id));
+    const locked=levelLocked||prerequisiteLocked||gemLocked;
+    const requirements=[
+      levelLocked?`Level ${requiredLevel} required`:"",
+      prerequisiteLocked?"Complete prerequisite quiz":"",
+      gemLocked?`${gemCost} gems required`:""
+    ].filter(Boolean);
+    const action=locked
+      ?`<button class="button button-outline" type="button" data-unlock-quiz="${esc(quiz.id)}" ${gemCost===0?"disabled":""}>${gemCost?`Unlock for ${gemCost} Gems`:"Locked"}</button>`
+      :`<a class="button button-primary" href="${esc(quiz.google_form_url)}" target="_blank" rel="noopener noreferrer" data-recent-kind="quiz" data-recent-id="${esc(quiz.id)}">Open Google Form ↗</a>`;
+    return `<article class="content-card quiz-gated-card ${locked?"is-locked":""}"><span class="tag">${esc(quiz.course)} • ${esc(quiz.difficulty||"Practice")}</span><h3>${esc(quiz.title)}</h3><p>${esc(quiz.description||"Open the quiz to begin.")}</p>${topics.length?`<div class="quiz-topic-tags">${topics.map(item=>`<span class="quiz-topic-tag">${esc(item)}</span>`).join("")}</div>`:""}${locked?`<div class="quiz-lock-overlay" role="status"><span aria-hidden="true">🔒</span><strong>Locked</strong><small>${requirements.map(esc).join(" • ")}</small></div>`:""}<div class="quiz-card-actions">${action}<button class="button button-outline quiz-favorite-button" type="button" data-favorite-quiz="${esc(quiz.id)}" aria-pressed="${favorite}" aria-label="${favorite?"Remove from":"Add to"} favorites: ${esc(quiz.title)}">${favorite?"★ Saved":"☆ Save"}</button></div></article>`;
   }).join(""):'<p class="panel">No quizzes match these filters. Try changing your search or filters.</p>';
 }
 function parseQuizTopics(value){
@@ -1685,7 +2040,23 @@ function parseQuizTopics(value){
 }
 ["quiz-course-filter","quiz-topic-filter","quiz-difficulty-filter","quiz-favorites-only"].forEach(id=>$(id).addEventListener("change",renderQuizzes));
 $("quiz-search").addEventListener("input",renderQuizzes);
+async function unlockQuiz(quizId){
+  if(!currentUser||currentProfileRole==="guest")return;
+  const quiz=quizzes.find(item=>String(item.id)==String(quizId));
+  if(!quiz)return;
+  const cost=Number(quiz.gem_cost)||0;
+  if(cost<=0)return;
+  const {data,error}=await db.rpc("spend_gems",{p_amount:cost});
+  if(error){message("quiz-results-status",error.message,true);return}
+  const {error:unlockError}=await db.from("user_unlocked_quizzes").insert({user_id:currentUser.id,quiz_id:Number(quizId)});
+  if(unlockError){message("quiz-results-status",unlockError.message,true);return}
+  unlockedQuizIds.add(String(quizId));syncGemBalance(data,Math.max(0,currentProfileGems-cost));
+  message("quiz-results-status","Quiz unlocked.");
+  renderQuizzes();renderGemsShop();
+}
 $("quiz-list").addEventListener("click",event=>{
+  const unlock=event.target.closest("[data-unlock-quiz]");
+  if(unlock){void unlockQuiz(unlock.dataset.unlockQuiz);return}
   const button=event.target.closest("[data-favorite-quiz]");
   if(!button)return;
   const id=button.dataset.favoriteQuiz,current=new Set(userPreferences.quizFavorites||[]);
@@ -1796,11 +2167,9 @@ async function renderResources(){
   }));
   if(requestId!==resourceRenderId)return;
   const visibleCourses=c==="all"?COURSES:[c];
-  const savedResourceIds=new Set(userPreferences.savedResourceIds||[]);
   const card=entry=>{
     const r=entry.resource,link=entry.url&&safeUrl(entry.url)?`<a class="button button-outline" href="${esc(entry.url)}" target="_blank" rel="noopener noreferrer" data-recent-kind="resource" data-recent-id="${esc(r.id)}">${r.storage_path?"Download document ↗":r.resource_type==="video"?"Watch video ↗":"Open resource ↗"}</a>`:`<p class="message error">Could not load this document: ${esc(entry.error||"Invalid resource URL")}</p>`;
-    const saved=savedResourceIds.has(String(r.id));
-    return `<article class="content-card"><span class="tag">${esc(r.course)} • ${esc(r.resource_type)}</span><h4>${esc(r.title)}</h4><p>${esc(r.description||"")}</p><div class="resource-card-actions">${link}<button class="button button-outline resource-save-button" type="button" data-save-resource="${esc(r.id)}" aria-pressed="${saved}">${saved?"★ Saved":"☆ Save"}</button></div></article>`;
+    return `<article class="content-card"><span class="tag">${esc(r.course)} • ${esc(r.resource_type)}</span><h4>${esc(r.title)}</h4><p>${esc(r.description||"")}</p><div class="resource-card-actions">${link}</div></article>`;
   };
   $("resource-list").innerHTML=visibleCourses.map(course=>{
     const courseRows=entries.filter(entry=>entry.resource.course===course);
@@ -1820,51 +2189,6 @@ async function renderResources(){
   $("resource-list").removeAttribute("aria-busy");
 }
 $("resource-course-filter").onchange=renderResources;$("resource-type-filter").onchange=renderResources;
-async function renderSavedResources(){
-  const list=$("profile-saved-resources-list");if(!list)return;
-  const savedIds=new Set(userPreferences.savedResourceIds||[]);
-  const saved=resources.filter(resource=>savedIds.has(String(resource.id)));
-  if(!saved.length){
-    list.innerHTML='<p class="muted">No saved resources yet. Browse the resource library and select “Save” on materials you want to revisit.</p>';
-    return;
-  }
-  list.innerHTML=loadingMessage("Loading saved resources…");
-  const entries=await Promise.all(saved.map(async resource=>{
-    try{return {resource,...await getResourceLink(resource)}}
-    catch(error){console.error("Could not load a saved study resource.",error);return {resource,url:null,error:error.message}}
-  }));
-  list.innerHTML=entries.map(({resource,url,error})=>{
-    const link=url&&safeUrl(url)?`<a class="button button-outline" href="${esc(url)}" target="_blank" rel="noopener noreferrer" data-recent-kind="resource" data-recent-id="${esc(resource.id)}">Open resource ↗</a>`:
-      `<span class="field-help">Resource unavailable${error?`: ${esc(error)}`:""}.</span>`;
-    const note=userPreferences.resourceNotes?.[String(resource.id)]||"";
-    return `<article class="profile-saved-resource"><div class="profile-saved-resource-info"><span class="tag">${esc(resource.course)} • ${esc(resource.resource_type)}</span><h3>${esc(resource.title)}</h3></div><div class="profile-saved-resource-content">${link}<label class="resource-note-label">Private note<textarea data-resource-note-input="${esc(resource.id)}" maxlength="2000" rows="3" placeholder="Add a private note about this resource…">${esc(note)}</textarea></label><button class="button button-outline resource-note-save" type="button" data-save-resource-note="${esc(resource.id)}">Save note</button></div><button class="button button-light resource-unsave-button" type="button" data-save-resource="${esc(resource.id)}" aria-pressed="true">Remove from saved</button></article>`;
-  }).join("");
-}
-$("resource-list").addEventListener("click",event=>{
-  saveResourceFromClick(event);
-});
-function saveResourceFromClick(event){
-  const button=event.target.closest("[data-save-resource]");if(!button)return;
-  const saved=new Set(userPreferences.savedResourceIds||[]),id=button.dataset.saveResource;
-  if(saved.has(id))saved.delete(id);else saved.add(id);
-  void savePersonalPreferences({savedResourceIds:[...saved]},"profile-saved-status","Saved resources synced to your account.");
-  renderResources();renderSavedResources();
-}
-$("profile-saved-resources-list").addEventListener("click",event=>{
-  const noteButton=event.target.closest("[data-save-resource-note]");
-  if(noteButton){
-    const id=noteButton.dataset.saveResourceNote,textarea=document.querySelector(`[data-resource-note-input="${id}"]`);
-    if(!textarea){message("profile-saved-status","Could not find the resource note field. Refresh the page and try again.",true);return}
-    const note=textarea.value.trim(),resourceNotes={...userPreferences.resourceNotes};
-    if(note)resourceNotes[id]=note;else delete resourceNotes[id];
-    if(Object.keys(resourceNotes).length>50){
-      message("profile-saved-status","You can save private notes for up to 50 resources.",true);return;
-    }
-    void savePersonalPreferences({resourceNotes},"profile-saved-status",note?"Private note saved to your account.":"Private note removed.");
-    return;
-  }
-  saveResourceFromClick(event);
-});
 
 $("study-task-form").addEventListener("submit",event=>{
   event.preventDefault();
@@ -1919,6 +2243,8 @@ $("score-form").addEventListener("submit",async e=>{
 async function loadAttempts(){
   if(!currentUser)return;const {data,error}=await db.from("quiz_attempts").select("*").eq("user_id",currentUser.id).order("created_at",{ascending:false});
   if(error){console.error(error);return}attempts=data||[];renderPersonalStats();
+  try{await syncUnlockedAchievements()}
+  catch(syncError){console.warn("Could not sync achievement progress.",syncError)}
 }
 function renderPersonalStats(){
   const n=attempts.length,avg=n?attempts.reduce((s,a)=>s+100*Number(a.score)/Number(a.total_marks),0)/n:0;
@@ -1928,13 +2254,16 @@ function renderPersonalStats(){
   $("stats-grid").querySelectorAll("[data-count-up]").forEach(item=>animateCountUp(item,item.dataset.countUp,Number(item.dataset.countDecimals)||0,item.dataset.countSuffix||""));
   $("results-body").innerHTML=n?attempts.map(a=>{
     const answerSummary=Array.isArray(a.answer_summary)?a.answer_summary:[];
-    const review=answerSummary.length?`<details class="answer-review"><summary>Review answers (${answerSummary.length})</summary><ol>${answerSummary.map(item=>{
+    const paidReview=a.summary_unlocked===true;
+    const review=answerSummary.length
+      ?paidReview?`<details class="answer-review"><summary>Review answers (${answerSummary.length})</summary><ol>${answerSummary.map(item=>{
       const result=quizAnswerResult(item),status=`<span class="answer-result answer-${result.kind}">${result.label}</span>`;
       const points=result.kind!=="pending"?`<p><strong>Points:</strong> ${esc(item.points_awarded)} / ${esc(item.points_possible)}</p>`:"";
       const correctAnswers=Array.isArray(item.correct_answers)?item.correct_answers.filter(answer=>typeof answer==="string"):[];
       const correctAnswer=correctAnswers.length?`<p><strong>Correct answer${correctAnswers.length===1?"":"s"}:</strong> ${correctAnswers.map(esc).join(", ")}</p>`:"";
       return `<li><h4>${esc(item.question)} ${status}</h4><p><strong>Your answer:</strong> ${esc(item.answer)}</p>${correctAnswer}${points}${item.feedback?`<p><strong>Feedback:</strong> ${esc(item.feedback)}</p>`:""}</li>`;
-    }).join("")}</ol></details>`:'<span class="muted">Not provided</span>';
+    }).join("")}</ol></details>`:`<button class="button button-outline" type="button" data-unlock-summary="${esc(a.id)}" ${currentProfileRole==="guest"?"disabled":""}>Unlock Answer Review · 15 Gems</button>`
+      :'<span class="muted">Not provided</span>';
     return `<tr><td>${esc(formatDate(a.created_at))}</td><td>${esc(a.course)}</td><td>${esc(a.quiz_title)}</td><td>${Number(a.score)} / ${Number(a.total_marks)} (${(100*Number(a.score)/Number(a.total_marks)).toFixed(1)}%)</td><td><span class="status-pill ${a.is_verified?"status-published":"status-draft"}">${a.is_verified?"Verified":"Private / unverified"}</span></td><td>${review}</td></tr>`;
   }).join(""):'<tr><td colspan="6">No results recorded yet.</td></tr>';
   renderStudyStreak();renderChart();renderAchievements();renderWeeklyQuizGoal();renderCourseFocus();
@@ -1946,6 +2275,20 @@ function quizAnswerResult(item){
   if(item.points_awarded<=0)return {label:"Incorrect",kind:"incorrect"};
   return {label:"Partially correct",kind:"partial"};
 }
+async function unlockAnswerSummary(attemptId){
+  if(!currentUser||currentProfileRole==="guest")return;
+  const {data,error}=await db.rpc("spend_gems",{p_amount:15});
+  if(error){message("progress-export-status",error.message,true);return}
+  const {error:updateError}=await db.from("quiz_attempts").update({summary_unlocked:true}).eq("id",attemptId).eq("user_id",currentUser.id);
+  if(updateError){message("progress-export-status",updateError.message,true);return}
+  syncGemBalance(data,Math.max(0,currentProfileGems-15));
+  await loadAttempts();
+  renderGemsShop();
+}
+$("results-body").addEventListener("click",event=>{
+  const button=event.target.closest("[data-unlock-summary]");
+  if(button)void unlockAnswerSummary(button.dataset.unlockSummary);
+});
 function renderWeeklyQuizGoal(){
   const goal=userPreferences.weeklyQuizGoal||3,cutoff=Date.now()-7*DAY_MILLISECONDS;
   const count=attempts.filter(attempt=>Number.isFinite(new Date(attempt.created_at).getTime())&&new Date(attempt.created_at).getTime()>=cutoff).length;
@@ -2034,15 +2377,32 @@ function renderChart(){
   }));
   chart=new Chart(ctx,{type:"line",data:{labels,datasets},options:{responsive:true,interaction:{mode:"index",intersect:false},scales:{y:{beginAtZero:true,max:100,title:{display:true,text:"Average score (%)"}}},plugins:{legend:{position:"bottom"}}}});
 }
-function renderAchievements(){
-  const verified=attempts.filter(a=>a.is_verified),allAvg=verified.length?verified.reduce((s,a)=>s+100*a.score/a.total_marks,0)/verified.length:0;
-  const items=[
-    ["First steps",attempts.length>=1,"Record your first practice result."],
-    ["Practice streak",attempts.length>=5,"Record five or more quiz attempts."],
-    ["Well-rounded learner",new Set(attempts.map(a=>a.course)).size===5,"Practise across all five courses."],
-    ["Verified high performer",verified.length>=3&&allAvg>=80,"Average at least 80% across three verified scores."]
-  ];
-  $("achievement-list").innerHTML=items.map(([name,earned,desc])=>`<div class="achievement ${earned?"earned":""}"><strong>${earned?"🏅":"🔒"} ${name}</strong><p>${desc}</p><span>${earned?"Unlocked":"In progress"}</span></div>`).join("");
+async function renderAchievements(){
+  if(!currentUser||currentProfileRole==="guest"){$("achievement-list").textContent="";return}
+  try{await syncUnlockedAchievements()}catch(error){console.info("Achievement sync unavailable.",error)}
+  const [achievementResult,userResult]=await Promise.all([
+    db.from("achievements").select("*").order("gem_reward"),
+    db.from("user_achievements").select("achievement_id,claimed,unlocked_at").eq("user_id",currentUser.id)
+  ]);
+  if(achievementResult.error||userResult.error){
+    message("achievement-status","Achievements could not be loaded. Apply the latest migration.",!!(achievementResult.error||userResult.error));
+    return;
+  }
+  const claimed=new Map((userResult.data||[]).map(row=>[row.achievement_id,row]));
+  const achievements=achievementResult.data||[];
+  $("achievement-list").innerHTML=achievements.length?achievements.map(item=>{
+    const progress=claimed.get(item.id);
+    const earned=!!progress;
+    const action=earned&&!progress.claimed
+      ?`<button class="button button-primary" type="button" data-claim-achievement="${esc(item.id)}">Claim ${item.gem_reward} Gems + ${item.gem_reward} XP</button>`
+      :earned?'<span class="status-pill status-published">Gems claimed</span>':'<span>Locked</span>';
+    return `<div class="achievement ${earned?"earned":""}"><strong>${earned?esc(item.icon):"🔒"} ${esc(item.title)}</strong><p>${esc(item.description)}</p>${action}</div>`;
+  }).join(""):'<p class="muted">No achievements available.</p>';
+}
+async function syncUnlockedAchievements(){
+  if(!currentUser||currentProfileRole==="guest")return;
+  const {error}=await db.rpc("sync_unlocked_achievements");
+  if(error)throw error;
 }
 async function loadProfile(){
   if(!currentUser)return;
@@ -2050,10 +2410,10 @@ async function loadProfile(){
   const userId=currentUser.id,panel=document.querySelector(".profile-panel");
   panel.setAttribute("aria-busy","true");message("profile-message","Loading your profile…");
   try{
-    const baseFields=["display_name","leaderboard_opt_in","full_name","theme_color","class_name","favorite_subject","quiz_rank","medical_school","specialty_interest"];
+    const baseFields=["display_name","leaderboard_opt_in","full_name","theme_color","class_name","favorite_subject","quiz_rank","medical_school","specialty_interest","avatar_url","equipped_items"];
     let fields=[...baseFields,"preferences","activity_reset_at"];
     let profile=await db.from("profiles").select(fields.join(",")).eq("id",userId).single();
-    let preferencesAvailable=true,resetMarkerAvailable=true,academicFieldsAvailable=true;
+    let preferencesAvailable=true,resetMarkerAvailable=true,academicFieldsAvailable=true,avatarColumnsAvailable=true;
     for(let retry=0;profile.error&&retry<4;retry++){
       const errorText=profile.error.message||"";
       if(preferencesAvailable&&(profile.error.code==="42703"||profile.error.code==="PGRST204")&&/preferences.*(column|schema cache)|column.*preferences/i.test(errorText)){
@@ -2062,6 +2422,8 @@ async function loadProfile(){
         resetMarkerAvailable=false;fields=fields.filter(field=>field!=="activity_reset_at");
       }else if(academicFieldsAvailable&&(profile.error.code==="42703"||profile.error.code==="PGRST204")&&/(medical_school|specialty_interest).*(column|schema cache)|column.*(medical_school|specialty_interest)/i.test(errorText)){
         academicFieldsAvailable=false;fields=fields.filter(field=>field!=="medical_school"&&field!=="specialty_interest");
+      }else if(avatarColumnsAvailable&&(profile.error.code==="42703"||profile.error.code==="PGRST204")&&/(avatar_url|equipped_items).*(column|schema cache)|column.*(avatar_url|equipped_items)/i.test(errorText)){
+        avatarColumnsAvailable=false;fields=fields.filter(field=>field!=="avatar_url"&&field!=="equipped_items");
       }else break;
       console.warn("The profile table is missing a newer optional settings column.",profile.error);
       profile=await db.from("profiles").select(fields.join(",")).eq("id",userId).single();
@@ -2071,6 +2433,12 @@ async function loadProfile(){
     if(currentUser?.id!==userId)return;
     activityResetSyncAvailable=resetMarkerAvailable;
     profileAcademicFieldsAvailable=academicFieldsAvailable;
+    if(avatarColumnsAvailable){
+      currentProfileVisuals={avatar_url:data.avatar_url||null,equipped_items:data.equipped_items||{}};
+      currentProfileGemSettings.equipped_items=data.equipped_items||currentProfileGemSettings.equipped_items||{};
+      selectedPresetAvatar=typeof data.equipped_items?.avatar==="string"?data.equipped_items.avatar:"";
+      renderPresetAvatars();
+    }
     const activityWasReset=resetMarkerAvailable&&data.activity_reset_at?applyActivityResetMarker(data.activity_reset_at):false;
     if(preferencesAvailable&&data.preferences&&typeof data.preferences==="object"&&!Array.isArray(data.preferences)){
       userPreferences=sanitizeUserPreferences({...userPreferences,...data.preferences});
@@ -2083,8 +2451,8 @@ async function loadProfile(){
     $("specialty-interest").value=data.specialty_interest||"";$("favorite-subject").value=data.favorite_subject||"";$("quiz-rank").value=data.quiz_rank||"";
     $("profile-banner-photo").checked=userPreferences.profileBannerPhoto;
     $("leaderboard-opt-in").checked=!!data.leaderboard_opt_in;$("settings-leaderboard-opt-in").checked=!!data.leaderboard_opt_in;$("theme-color").value=themeColor;$("settings-accent-color").value=themeColor;setProfileIdentity(displayName);
-    renderProfileOverview();loadProfilePhoto(userId);
-    renderProfileMetrics();renderSavedResources();renderRecentItems();
+    renderProfileOverview();loadProfilePhotoForUser(userId,avatarColumnsAvailable?data.avatar_url:null);
+    renderProfileMetrics();renderRecentItems();
     $("home-display-name").textContent=displayName;$("home-class-name").textContent=data.class_name||"Class / year not set";
     if(!preferencesAvailable)message("settings-message","Preferences are stored on this browser until the latest schema.sql is applied for cross-device sync.");
     message("profile-message",academicFieldsAvailable?"":"Run the latest schema.sql to sync medical school and specialty details.");
@@ -2108,23 +2476,227 @@ async function syncActivityResetMarker(refreshResults=false){
 }
 function applyThemeColor(color){
   if(!/^#[0-9a-f]{6}$/i.test(color))return false;
-  const root=document.documentElement,channels=[1,3,5].map(i=>parseInt(color.slice(i,i+2),16));
+  const root=document.body,channels=[1,3,5].map(i=>parseInt(color.slice(i,i+2),16)),dark=root.classList.contains("theme-dark");
   const mix=(accentRatio,base)=>"#"+channels.map(c=>Math.round(c*accentRatio+base*(1-accentRatio)).toString(16).padStart(2,"0")).join("");
   root.style.setProperty("--teal",color);
-  root.style.setProperty("--teal-dark",mix(.78,0));
-  root.style.setProperty("--mint",mix(.1,255));
-  root.style.setProperty("--theme-soft",mix(.11,255));
-  root.style.setProperty("--theme-softer",mix(.04,255));
-  root.style.setProperty("--theme-border",mix(.15,255));
-  root.style.setProperty("--theme-notice",mix(.07,255));
-  root.style.setProperty("--theme-notice-border",mix(.2,255));
-  root.style.setProperty("--theme-notice-text",mix(.78,0));
-  root.style.setProperty("--theme-outline-border",mix(.35,255));
-  root.style.setProperty("--theme-focus","rgba("+channels.join(",")+",.1)");
+  root.style.setProperty("--teal-dark",dark?mix(.68,255):mix(.78,0));
+  root.style.setProperty("--teal-text",dark?mix(.42,255):color);
+  if(shopItem(currentProfileGemSettings.equipped_items?.theme)?.category==="themes"){
+    root.style.setProperty("--theme-focus",`rgba(${channels.join(",")},${dark?".34":".12"})`);
+    return true;
+  }
+  if(dark){
+    root.style.setProperty("--paper",mix(.12,12));
+    root.style.setProperty("--white",mix(.16,24));
+    root.style.setProperty("--surface-raised",mix(.2,34));
+    root.style.setProperty("--ink","#f4f6f7");
+    root.style.setProperty("--muted","#c4cdd2");
+    root.style.setProperty("--line",mix(.34,92));
+  }
+  root.style.setProperty("--mint",mix(dark ? .18 : .1,dark?22:255));
+  root.style.setProperty("--theme-soft",mix(dark ? .2 : .11,dark?18:255));
+  root.style.setProperty("--theme-softer",dark?mix(.14,15):mix(.04,255));
+  root.style.setProperty("--theme-border",mix(dark ? .36 : .15,dark?52:255));
+  root.style.setProperty("--theme-notice",mix(dark ? .2 : .07,dark?18:255));
+  root.style.setProperty("--theme-notice-border",mix(dark ? .4 : .2,dark?48:255));
+  root.style.setProperty("--theme-notice-text",dark?mix(.28,255):mix(.78,0));
+  root.style.setProperty("--theme-outline-border",mix(dark ? .46 : .35,dark?80:255));
+  root.style.setProperty("--theme-focus",`rgba(${channels.join(",")},${dark?".34":".12"})`);
   return true;
 }
+function applyShopPalette(item){
+  const palette=item?.palette?.[document.body.classList.contains("theme-dark")?"dark":"light"];
+  if(!palette)return false;
+  const properties={
+    "--paper":palette.paper,"--white":palette.surface,"--surface-raised":palette.raised,
+    "--ink":palette.ink,"--muted":palette.muted,"--line":palette.line,
+    "--teal":palette.accent,"--teal-dark":palette.accentStrong,"--teal-text":palette.accentText,
+    "--mint":palette.soft,"--theme-soft":palette.soft,"--theme-softer":palette.softer,
+    "--theme-border":palette.border,"--theme-notice":palette.notice,
+    "--theme-notice-border":palette.noticeBorder,"--theme-notice-text":palette.noticeText,
+    "--theme-outline-border":palette.border,"--theme-focus":`${palette.accent}44`
+  };
+  Object.entries(properties).forEach(([name,value])=>document.body.style.setProperty(name,value));
+  return true;
+}
+function applyCurrentShopTheme(){
+  const theme=shopItem(currentProfileGemSettings.equipped_items?.theme);
+  if(theme?.category==="themes"&&applyShopPalette(theme))return true;
+  ["--paper","--white","--surface-raised","--ink","--muted","--line","--teal","--teal-dark","--teal-text","--mint","--theme-soft","--theme-softer","--theme-border","--theme-notice","--theme-notice-border","--theme-notice-text","--theme-outline-border","--theme-focus"].forEach(name=>document.body.style.removeProperty(name));
+  const accent=$("theme-color")?.value||DEFAULT_THEME_COLOR;
+  return applyThemeColor(accent);
+}
+function renderGemBalance(){
+  const balance=Number(currentProfileGems)||0;
+  const formatted=balance.toLocaleString();
+  const count=$("gem-balance-count"),button=$("gem-balance-button");
+  if(count)count.textContent=formatted;
+  if(button)button.classList.toggle("hidden",currentProfileRole==="guest");
+  if(button)button.setAttribute("aria-label",`Open Gems Shop, balance: ${balance} gems${currentProfileRole==="guest"?" (disabled for Guest accounts)":""}`);
+  const shopBalance=$("shop-balance");
+  if(shopBalance)shopBalance.textContent=`Balance: ${formatted} gems${currentProfileRole==="guest"?" · Gems disabled in Guest mode":""}`;
+}
+function syncGemBalance(value,fallback=currentProfileGems){
+  const balance=Number(value);
+  currentProfileGems=Number.isFinite(balance)&&balance>=0?balance:fallback;
+  renderGemBalance();
+}
+function applyGuestMode(){
+  const guest=currentProfileRole==="guest";
+  ["page-resources","page-achievements","profile-tab-button-shop","chat-launch","home-leaderboard","leaderboard-panel","streak-progress","streak-chip","profile-metric-streak"].forEach(id=>{
+    const el=$(id);if(el)el.classList.toggle("hidden",guest);
+  });
+  document.querySelectorAll('[data-go="resources"],[data-feature-nav="resources"],[data-page="achievements"]').forEach(el=>el.classList.toggle("hidden",guest));
+  document.querySelector(".ai-assistant-card")?.classList.toggle("hidden",guest);
+  if(guest){
+    document.querySelectorAll(".profile-metric-card").forEach(card=>{if(card.textContent.includes("STREAK")||card.textContent.includes("STUDY GROUP"))card.classList.add("hidden")});
+  }
+  const badge=document.querySelector(".profile-member-badge");
+  if(badge)badge.innerHTML=`<span aria-hidden="true">●</span> ${guest?"GUEST — PRIVATE & UNVERIFIED":"METROS member"}`;
+  const aiLauncher=$("ai-assistant-launch");
+  if(aiLauncher)aiLauncher.classList.toggle("hidden",!window.medstudyCanUseAi?.());
+  renderGemBalance();
+}
+async function buyOrEquipShopItem(itemId){
+  if(!currentUser)return;
+  const item=(window.SHOP_CATALOG||[]).find(entry=>entry.id===itemId);
+  if(!item||currentProfileRole==="guest")return;
+  if(item.available===false){message("gems-shop-status",item.description||"This item is not available yet.",true);return}
+  const owned=(currentProfileGemSettings.unlocked_items||[]).includes(itemId);
+  if(!owned){
+    const {data,error}=await db.rpc("buy_shop_item",{p_item_id:item.id,p_price:item.price});
+    if(error){message("gems-shop-status",error.message,true);return}
+    const unlocked=[...new Set([...(currentProfileGemSettings.unlocked_items||[]),itemId])];
+    currentProfileGemSettings.unlocked_items=unlocked;
+    syncGemBalance(data,Math.max(0,currentProfileGems-item.price));
+  }
+  const equipped={...(currentProfileGemSettings.equipped_items||{})};
+  const key=item.slot||(item.category==="themes"?"theme":item.category==="frames"?"frame":item.category);
+  if(equipped[key]===itemId){delete equipped[key]}else{equipped[key]=itemId}
+  if(item.category==="scrubs"&&item.slot==="outfit")delete equipped.scrubs;
+  const updates={equipped_items:equipped};
+  if(item.category==="themes"){
+    const palette=item.palette?.[document.body.classList.contains("theme-dark")?"dark":"light"];
+    updates.theme_color=equipped.theme?palette?.accent||item.colors?.light:DEFAULT_THEME_COLOR;
+  }
+  const {error}=await db.from("profiles").update(updates).eq("id",currentUser.id);
+  if(error){message("gems-shop-status",error.message,true);return}
+  currentProfileGemSettings.equipped_items=equipped;
+  currentProfileVisuals.equipped_items=equipped;
+  publicProfileVisuals.delete(currentUser.id);
+  if(item.category==="themes"){
+    const accent=equipped.theme?shopItem(equipped.theme)?.colors?.[document.body.classList.contains("theme-dark")?"dark":"light"]:DEFAULT_THEME_COLOR;
+    if(accent){$("theme-color").value=accent;$("settings-accent-color").value=accent}
+    applyCurrentShopTheme();
+  }
+  renderCurrentAvatar();
+  message("gems-shop-status",owned?"Shop item equip state updated.":"Purchase complete; item equipped.");
+  renderGemsShop();
+}
+function shopPreview(item,equipKey,equipped){
+  if(item.category==="themes"){
+    const palette=item.palette?.[document.body.classList.contains("theme-dark")?"dark":"light"];
+    return `<div class="shop-theme-preview" style="--preview-paper:${palette?.paper||"#f5f8fa"};--preview-surface:${palette?.surface||"#fff"};--preview-raised:${palette?.raised||"#f7fbfa"};--preview-accent:${palette?.accent||"#087f8c"};--preview-line:${palette?.line||"#dce5eb"}"><span class="shop-theme-sidebar"></span><span class="shop-theme-top"></span><span class="shop-theme-panel"></span><span class="shop-theme-panel short"></span><b>${item.symbol||"✦"}</b></div>`;
+  }
+  if(item.category==="boosters")return `<div class="shop-booster-preview"><span aria-hidden="true">${esc(item.symbol||"⏱️")}</span><strong>${esc(item.slot==="chime"?"Focus timer sound":"Study tool")}</strong></div>`;
+  const previewEquipment={...equipped,[equipKey]:item.id};
+  if(equipKey==="outfit")delete previewEquipment.scrubs;
+  const previewProfile={...currentProfileVisuals,equipped_items:previewEquipment};
+  const title=avatarTitle(previewProfile);
+  return `<div class="shop-avatar-preview">${avatarMarkup($("display-name")?.value||"METROS Student",currentUser?.id,"shop-preview-avatar",previewProfile)}<span class="shop-preview-detail">${esc(item.symbol||"✦")} ${esc(title?title.name:item.name)}</span></div>`;
+}
+function renderGemsShop(){
+  const grid=$("gems-shop-grid");if(!grid)return;
+  const catalog=window.SHOP_CATALOG||[];
+  const unlocked=new Set(Array.isArray(currentProfileGemSettings.unlocked_items)?currentProfileGemSettings.unlocked_items:[]);
+  const equipped=currentProfileGemSettings.equipped_items&&typeof currentProfileGemSettings.equipped_items==="object"?currentProfileGemSettings.equipped_items:{};
+  const items=catalog.filter(item=>item.category===shopCategory&&(shopRarity==="All"||item.rarity===shopRarity));
+  renderGemBalance();
+  grid.innerHTML=items.map(item=>{
+    const equipKey=item.slot||(item.category==="themes"?"theme":item.category==="frames"?"frame":item.category);
+    const owned=unlocked.has(item.id),isEquipped=equipped[equipKey]===item.id||equipped[item.category]===item.id||equipped[item.id]===true;
+    const unavailable=item.available===false;
+    return `<article class="shop-item rarity-${esc(String(item.rarity).toLowerCase())}${isEquipped?" is-equipped":""}">
+      ${shopPreview(item,equipKey,equipped)}
+      <div class="shop-item-copy"><div class="shop-item-labels"><span class="rarity-label">${esc(item.rarity)}</span>${isEquipped?'<span class="equipped-label">EQUIPPED</span>':""}</div><h3>${esc(item.name)}</h3><p>${esc(item.description||"A cosmetic for your study profile.")}</p></div>
+      <div class="shop-actions">
+      ${item.category==="themes"?`<button class="button button-light" type="button" data-shop-preview="${esc(item.id)}">Preview theme</button>`:""}
+      ${unavailable?`<button class="button button-outline" type="button" disabled>Coming soon</button>`:
+      owned?`<button class="button ${isEquipped?"button-primary":"button-outline"}" type="button" data-shop-toggle="${esc(item.id)}">${isEquipped?"Equipped":"Equip"}</button>`:
+      `<button class="button button-primary" type="button" data-shop-buy="${esc(item.id)}" ${currentProfileRole==="guest"?"disabled":""}>Buy · ${item.price} Gems</button>`}
+      </div></article>`;
+  }).join("")||'<p class="muted">No items match this filter.</p>';
+}
+async function loadGemsProfile(){
+  if(!currentUser)return;
+  const {data,error}=await db.from("profiles").select("gems,gems_enabled,unlocked_items,equipped_items,banner_blur,role,level,xp,avatar_url").eq("id",currentUser.id).single();
+  if(error)return;
+  currentProfileGems=Number(data.gems)||0;
+  currentProfileXp=Number(data.xp)||0;
+  renderProfileProgression();
+  currentProfileGemsEnabled=data.gems_enabled!==false&&data.role!=="guest";
+  currentProfileRole=data.role==="guest"?"guest":data.role==="admin"?"admin":"member";
+  currentProfileGemSettings={unlocked_items:Array.isArray(data.unlocked_items)?data.unlocked_items:[],equipped_items:data.equipped_items||{}};
+  selectedPresetAvatar=typeof data.equipped_items?.avatar==="string"?data.equipped_items.avatar:"";
+  currentProfileVisuals={avatar_url:data.avatar_url||currentProfileVisuals.avatar_url||null,equipped_items:data.equipped_items||{}};
+  renderPresetAvatars();
+  if(data.role==="guest")currentProfileGemSettings.gems_enabled=false;
+  const blur=Math.min(20,Math.max(0,Number(data.banner_blur)||4));
+  if($("banner-blur")){$("banner-blur").value=String(blur);$("banner-blur-value").textContent=`${blur} px`}
+  document.documentElement.style.setProperty("--profile-banner-blur",`${blur}px`);
+  if(document.documentElement.style.getPropertyValue("--profile-banner-blur")===""){document.documentElement.style.setProperty("--profile-banner-blur",`${Math.min(20,Math.max(0,Number(data.banner_blur)||4))}px`)}
+  applyGuestMode();applyCurrentShopTheme();renderCurrentAvatar();renderGemBalance();renderGemsShop();
+  const equippedTheme=shopItem(data.equipped_items?.theme);
+  const palette=equippedTheme?.palette?.[document.body.classList.contains("theme-dark")?"dark":"light"];
+  if(palette){$("theme-color").value=palette.accent;$("settings-accent-color").value=palette.accent}
+  const unlockResult=await db.from("user_unlocked_quizzes").select("quiz_id").eq("user_id",currentUser.id);
+  unlockedQuizIds=new Set((unlockResult.data||[]).map(row=>String(row.quiz_id)));
+}
+window.medstudyCanUseAi=()=>currentUser&&currentProfileRole==="member"&&currentProfileGemsEnabled;
+window.medstudySpendAiGem=async()=>{
+  if(!window.medstudyCanUseAi())return false;
+  if(currentProfileGems<10){message("ai-assistant-status","You need at least 10 Gems to open the AI assistant.",true);return false}
+  if(!confirm("Opening the AI assistant spends 10 Gems once for this page session. Continue?")){
+    message("ai-assistant-status","Canceled. No Gems were spent.");
+    return false;
+  }
+  const {data,error}=await db.rpc("spend_gems",{p_amount:10});
+  if(error){message("ai-assistant-status",error.message,true);showLiveNotice("AI Study Tools",error.message);return false}
+  syncGemBalance(data,Math.max(0,currentProfileGems-10));
+  renderGemsShop();
+  return true;
+};
+document.addEventListener("click",event=>{
+  const category=event.target.closest("[data-shop-category]");
+  if(category){shopCategory=category.dataset.shopCategory;document.querySelectorAll("[data-shop-category]").forEach(el=>el.classList.toggle("active",el===category));renderGemsShop();return}
+  const rarity=event.target.closest("[data-rarity]");
+  if(rarity){shopRarity=rarity.dataset.rarity;document.querySelectorAll("[data-rarity]").forEach(el=>el.classList.toggle("active",el===rarity));renderGemsShop();return}
+  const buy=event.target.closest("[data-shop-buy]");
+  if(buy){void buyOrEquipShopItem(buy.dataset.shopBuy);return}
+  const toggle=event.target.closest("[data-shop-toggle]");
+  if(toggle){void buyOrEquipShopItem(toggle.dataset.shopToggle);return}
+  const preview=event.target.closest("[data-shop-preview]");
+  if(preview){
+    const item=(window.SHOP_CATALOG||[]).find(entry=>entry.id===preview.dataset.shopPreview);
+    if(!item)return;
+    if(shopPreviewTimer)clearTimeout(shopPreviewTimer);
+    applyShopPalette(item);
+    message("gems-shop-status",`Previewing ${item.name}. The preview will reset in 10 seconds.`);
+    shopPreviewTimer=setTimeout(()=>{shopPreviewTimer=null;applyCurrentShopTheme()},10000);
+  }
+});
+$("gem-balance-button").addEventListener("click",()=>{
+  if(currentProfileRole==="guest")return;
+  showPage("profile");
+  $("profile-tab-button-shop").click();
+});
 $("theme-color").addEventListener("input",e=>{$("settings-accent-color").value=e.target.value;applyThemeColor(e.target.value)});
 $("settings-accent-color").addEventListener("input",e=>{$("theme-color").value=e.target.value;applyThemeColor(e.target.value)});
+$("banner-blur").addEventListener("input",()=>{
+  const value=Math.min(20,Math.max(0,Number($("banner-blur").value)||0));
+  $("banner-blur-value").textContent=`${value} px`;
+  document.documentElement.style.setProperty("--profile-banner-blur",`${value}px`);
+});
 $("reset-theme-color").addEventListener("click",()=>{$("theme-color").value=DEFAULT_THEME_COLOR;$("settings-accent-color").value=DEFAULT_THEME_COLOR;applyThemeColor(DEFAULT_THEME_COLOR)});
 $("edit-profile-button").addEventListener("click",()=>{
   $("profile-tab-button-overview").click();
@@ -2139,12 +2711,7 @@ document.querySelectorAll("[data-profile-tab]").forEach(button=>button.addEventL
   document.querySelectorAll(".profile-tab-panel").forEach(panel=>{
     const active=panel.id===`profile-tab-${activeTab}`;panel.hidden=!active;panel.classList.toggle("hidden",!active);
   });
-  if(activeTab==="resources")renderSavedResources();
 }));
-$("profile-open-group-chat").addEventListener("click",()=>{
-  if(!featureEnabled("group_chat"))return;
-  showPage("home");openGroupChat();
-});
 function compressProfilePhoto(file){
   return new Promise((resolve,reject)=>{
     const objectUrl=URL.createObjectURL(file),image=new Image();
@@ -2207,8 +2774,16 @@ $("profile-picture").addEventListener("change",async event=>{
   try{
     const photo=await uploadProfilePhoto(file,text=>message("profile-photo-message",text));
     if(currentUser?.id!==userId)return;
+    const equipped={...(currentProfileGemSettings.equipped_items||{})};delete equipped.avatar;
+    const {error:profileError}=await db.from("profiles").update({avatar_url:photo,equipped_items:equipped}).eq("id",currentUser.id);
+    if(profileError)throw profileError;
     try{localStorage.removeItem(profilePhotoKey(userId))}
     catch(error){console.warn("Could not clear the local profile-photo cache.",error)}
+    selectedPresetAvatar="";
+    currentProfileGemSettings.equipped_items=equipped;
+    currentProfileVisuals={avatar_url:photo,equipped_items:equipped};
+    publicProfileVisuals.delete(userId);
+    renderPresetAvatars();
     setProfilePhoto(photo);
     message("profile-photo-message","Profile picture uploaded successfully.");
   }catch(error){
@@ -2237,7 +2812,12 @@ $("remove-profile-picture").addEventListener("click",async()=>{
       const {error}=await db.storage.from(PROFILE_PHOTO_BUCKET).remove([`${currentUser.id}/avatar.webp`]);
       if(error)throw error;
     }
-    localStorage.removeItem(key);setProfilePhoto(null);
+    const {error:profileError}=await db.from("profiles").update({avatar_url:null}).eq("id",currentUser.id);
+    if(profileError)throw profileError;
+    localStorage.removeItem(key);
+    currentProfileVisuals.avatar_url=null;publicProfileVisuals.delete(currentUser.id);
+    setProfilePhoto(null);
+    renderPresetAvatars();
     message("profile-photo-message","Profile picture removed.");
   }catch(error){
     console.error("Could not remove the saved profile picture.",error);
@@ -2260,7 +2840,7 @@ $("profile-form").addEventListener("submit",async e=>{
   const successMessage=profileAcademicFieldsAvailable?"Profile saved.":"Profile saved. Run the latest schema.sql to sync medical school and specialty details.";
   message("profile-message",error?error.message:successMessage,!!error);if(!error){
     $("settings-leaderboard-opt-in").checked=$("leaderboard-opt-in").checked;$("settings-accent-color").value=themeColor;
-    setProfileIdentity(name);$("home-display-name").textContent=name;
+    setProfileIdentity(name);$("home-display-name").textContent=name;renderCurrentAvatar();publicProfileVisuals.delete(currentUser.id);
     renderProfileOverview();
     $("home-class-name").textContent=$("class-name").value.trim()||"Class / year not set";
     renderLeaderboard();renderHomeLeaderboard()
@@ -2276,6 +2856,7 @@ async function saveUserSettings(event){
     ...userPreferences,
     language:$("settings-language").value,timeZone:$("settings-timezone").value,region:$("settings-region").value,
     darkMode:$("settings-dark-mode").checked,density:$("settings-density").value,textSize:$("settings-text-size").value,
+    streakMascot:$("settings-streak-mascot").value,
     announcementAlerts:$("settings-announcements").checked,scheduleAlerts:$("settings-schedule-reminders").checked,
     quietHours:$("settings-quiet-enabled").checked,quietStart:$("settings-quiet-start").value,quietEnd:$("settings-quiet-end").value,
     dailyPopupLimit,activityConsent:$("settings-activity-consent").checked,
@@ -2292,7 +2873,8 @@ async function saveUserSettings(event){
   catch(error){localError=error;console.error("Could not save device settings.",error)}
   try{
     let result=await db.from("profiles").update({
-      theme_color:accentColor,leaderboard_opt_in:$("settings-leaderboard-opt-in").checked,preferences:userPreferences
+      theme_color:accentColor,leaderboard_opt_in:$("settings-leaderboard-opt-in").checked,preferences:userPreferences,
+      banner_blur:Number($("banner-blur")?.value)||4
     }).eq("id",currentUser.id);
     if(result.error&&(result.error.code==="42703"||result.error.code==="PGRST204"||/preferences.*(column|schema cache)|column.*preferences/i.test(result.error.message||""))){
       console.warn("Account preference sync requires the latest schema.",result.error);
@@ -2311,6 +2893,7 @@ async function saveUserSettings(event){
   message("settings-message",errors.join(" ")||profileSyncNotice||"Settings saved.",errors.length>0);
 }
 $("settings-form").addEventListener("submit",saveUserSettings);
+$("settings-streak-mascot").addEventListener("change",()=>updateStreakMascots(studyStreak.current,$("settings-streak-mascot").value));
 function resetCount(row,key){return Number(row?.[key])||0}
 function formatResetCount(row,key,singular,plural=singular+"s"){
   const count=resetCount(row,key);
@@ -2389,24 +2972,49 @@ $("refresh-leaderboard").onclick=refreshLeaderboard;
 async function getView(view){const {data,error}=await db.from(view).select("*");if(error)throw error;return data||[]}
 function rankingTable(rows,scoreKey="average_percentage"){
   if(!rows.length)return '<p class="muted">No rankings yet. At least three opted-in students need a verified score before rankings appear.</p>';
-  return `<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Student</th><th>Average / change</th><th>Quizzes</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td><span class="rank-medal${i>=3?" ordinal-rank":""}" aria-label="Rank ${i+1}">${medal(i+1)}</span></td><td>${esc(r.display_name)}${r.user_id===currentUser.id?' <b>(you)</b>':""}</td><td>${Number(r[scoreKey]||0).toFixed(1)}%</td><td>${r.quiz_count??r.current_quiz_count??"—"}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Student</th><th>Average / change</th><th>Quizzes</th></tr></thead><tbody>${rows.map((r,i)=>`<tr class="leaderboard-member-row" data-public-profile="${esc(r.user_id)}" data-public-rank="${i+1}"><td><span class="rank-medal${i>=3?" ordinal-rank":""}" aria-label="Rank ${i+1}">${i===0?"🏆":medal(i+1)}</span></td><td>${leaderboardPerson(r)}</td><td>${Number(r[scoreKey]||0).toFixed(1)}%</td><td>${r.quiz_count??r.current_quiz_count??"—"}</td></tr>`).join("")}</tbody></table></div>`;
+}
+function leaderboardPerson(row){
+  const profile=publicProfileVisuals.get(row.user_id);
+  const title=avatarTitle(profile);
+  return `<span class="leaderboard-person">${avatarMarkup(row.display_name,row.user_id,"leader-avatar",profile)}<span class="leaderboard-person-copy"><button class="student-name" type="button">${esc(row.display_name)}</button>${row.user_id===currentUser?.id?' <b>(you)</b>':""}${title?`<small style="--title-color:${esc(title.color||"var(--teal)")}">${esc(title.symbol||"")} ${esc(title.name)}</small>`:""}</span></span>`;
+}
+async function hydratePublicProfileVisuals(rows){
+  const ids=[...new Set(rows.map(row=>row.user_id).filter(id=>id&&!publicProfileVisuals.has(id)))];
+  if(!ids.length)return;
+  try{
+    const result=await db.from("member_public_profiles")
+      .select("id,display_name,avatar_url,equipped_items,level,xp,school,clinical_interests")
+      .in("id",ids);
+    if(result.error)throw result.error;
+    (result.data||[]).forEach(profile=>publicProfileVisuals.set(profile.id,profile));
+  }catch(error){console.warn("Could not load leaderboard profile visuals.",error)}
 }
 async function renderLeaderboard(){
   const box=$("leaderboard-content");box.setAttribute("aria-busy","true");box.innerHTML=loadingMessage("Loading rankings…");
   try{
-    if(activeBoard==="overall")box.innerHTML=rankingTable((await getView("overall_leaderboard")).sort((a,b)=>b.average_percentage-a.average_percentage));
+    if(activeBoard==="overall"){
+      const rows=(await getView("overall_leaderboard")).sort((a,b)=>b.average_percentage-a.average_percentage);
+      await hydratePublicProfileVisuals(rows);box.innerHTML=rankingTable(rows);
+    }
     if(activeBoard==="courses"){
       const rows=await getView("course_leaderboard");
-      box.innerHTML=COURSES.map(c=>{const group=rows.filter(r=>r.course===c).sort((a,b)=>b.average_percentage-a.average_percentage);return `<div class="course-board"><h3>${esc(c)}</h3>${group.length?`<ol>${group.map((r,index)=>`<li><span class="rank-medal${index>=3?" ordinal-rank":""}" aria-label="Rank ${index+1}">${medal(index+1)}</span> ${esc(r.display_name)} — <strong>${Number(r.average_percentage).toFixed(1)}%</strong> (${r.quiz_count} quizzes)</li>`).join("")}</ol>`:'<p class="muted">No qualifying scores.</p>'}</div>`}).join("");
+      await hydratePublicProfileVisuals(rows);
+      box.innerHTML=COURSES.map(c=>{const group=rows.filter(r=>r.course===c).sort((a,b)=>b.average_percentage-a.average_percentage);return `<div class="course-board"><h3>${esc(c)}</h3>${group.length?`<ol>${group.map((r,index)=>`<li data-public-profile="${esc(r.user_id)}" data-public-rank="${index+1}"><span class="rank-medal${index>=3?" ordinal-rank":""}" aria-label="Rank ${index+1}">${medal(index+1)}</span> ${leaderboardPerson(r)} — <strong>${Number(r.average_percentage).toFixed(1)}%</strong> (${r.quiz_count} quizzes)</li>`).join("")}</ol>`:'<p class="muted">No qualifying scores.</p>'}</div>`}).join("");
     }
-    if(activeBoard==="weekly")box.innerHTML=rankingTable((await getView("weekly_leaderboard")).sort((a,b)=>b.average_percentage-a.average_percentage));
+    if(activeBoard==="weekly"){
+      const rows=(await getView("weekly_leaderboard")).sort((a,b)=>b.average_percentage-a.average_percentage);
+      await hydratePublicProfileVisuals(rows);box.innerHTML=rankingTable(rows);
+    }
     if(activeBoard==="improved"){
       const rows=(await getView("most_improved_leaderboard")).sort((a,b)=>b.improvement_percentage_points-a.improvement_percentage_points);
-      box.innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Student</th><th>Previous avg.</th><th>Current avg.</th><th>Improvement</th></tr></thead><tbody>${rows.map((r,index)=>`<tr><td><span class="rank-medal${index>=3?" ordinal-rank":""}" aria-label="Rank ${index+1}">${medal(index+1)}</span></td><td>${esc(r.display_name)}</td><td>${Number(r.previous_average).toFixed(1)}%</td><td>${Number(r.current_average).toFixed(1)}%</td><td>+${Number(r.improvement_percentage_points).toFixed(1)} points</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">Not enough verified results in both seven-day periods yet.</p>';
+      await hydratePublicProfileVisuals(rows);
+      box.innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Student</th><th>Previous avg.</th><th>Current avg.</th><th>Improvement</th></tr></thead><tbody>${rows.map((r,index)=>`<tr class="leaderboard-member-row" data-public-profile="${esc(r.user_id)}" data-public-rank="${index+1}"><td><span class="rank-medal${index>=3?" ordinal-rank":""}" aria-label="Rank ${index+1}">${medal(index+1)}</span></td><td>${leaderboardPerson(r)}</td><td>${Number(r.previous_average).toFixed(1)}%</td><td>${Number(r.current_average).toFixed(1)}%</td><td>+${Number(r.improvement_percentage_points).toFixed(1)} points</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">Not enough verified results in both seven-day periods yet.</p>';
     }
     if(activeBoard==="activity"){
       const rows=await getView("recent_group_activity");
-      box.innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Student</th><th>Course</th><th>Quiz</th><th>Result</th><th>Date</th></tr></thead><tbody>${rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,20).map(r=>`<tr><td>${esc(r.display_name)}</td><td>${esc(r.course)}</td><td>${esc(r.quiz_title)}</td><td>${Number(r.percentage).toFixed(1)}%</td><td>${esc(formatDate(r.created_at))}</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">No recent verified activity.</p>';
+      await hydratePublicProfileVisuals(rows);
+      box.innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Student</th><th>Course</th><th>Quiz</th><th>Result</th><th>Date</th></tr></thead><tbody>${rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,20).map(r=>`<tr class="leaderboard-member-row" data-public-profile="${esc(r.user_id)}"><td>${leaderboardPerson(r)}</td><td>${esc(r.course)}</td><td>${esc(r.quiz_title)}</td><td>${Number(r.percentage).toFixed(1)}%</td><td>${esc(formatDate(r.created_at))}</td></tr>`).join("")}</tbody></table></div>`:'<p class="muted">No recent verified activity.</p>';
     }
   }catch(err){box.innerHTML=`<p class="muted">Could not load rankings: ${esc(err.message)}</p>`}
   finally{box.removeAttribute("aria-busy")}
@@ -2423,7 +3031,9 @@ function renderAdminUsers(){
     const lastSignIn=user.last_sign_in_at?formatDateTime(user.last_sign_in_at):"Never";
     const lastActivity=user.last_activity_at?formatDateTime(user.last_activity_at):"No activity recorded";
     const actions=`<button class="button button-outline" type="button" data-user-activity="${esc(user.id)}">Activity</button>${user.is_admin?'<span class="status-pill status-published">Admin protected</span>':`<button class="button button-light" type="button" data-user-ban="${esc(user.id)}" data-banned="${banned}">${banned?"Restore access":"Ban access"}</button><button class="button button-danger" type="button" data-user-delete="${esc(user.id)}">Delete</button>`}`;
-    return `<tr><td>${esc(user.display_name||"Student")}</td><td>${esc(user.email)}</td><td>${esc(user.class_name||"—")}</td><td>${esc(status)}</td><td>${esc(lastSignIn)}</td><td>${esc(lastActivity)}</td><td><div class="admin-actions">${actions}</div></td></tr>`;
+    const role=user.role||"member";
+    const controls=user.is_admin?"":`<label>Role<select data-user-role="${esc(user.id)}"><option value="member"${role==="member"?" selected":""}>Member</option><option value="guest"${role==="guest"?" selected":""}>Guest</option></select></label><label class="settings-switch"><span>Gems enabled</span><input type="checkbox" data-user-gems="${esc(user.id)}"${user.gems_enabled!==false?" checked":""}${role==="guest"?" disabled":""}></label>`;
+    return `<tr><td>${esc(user.display_name||"Student")}</td><td>${esc(user.email)}</td><td>${esc(user.class_name||"—")}</td><td>${esc(status)}${controls}</td><td>${esc(lastSignIn)}</td><td>${esc(lastActivity)}</td><td><div class="admin-actions">${actions}</div></td></tr>`;
   }).join("")}</tbody></table></div>`;
 }
 async function loadAdminUsers(append=false){
@@ -2442,7 +3052,13 @@ async function loadAdminUsers(append=false){
       if(activityError)throw activityError;
       activityByUser=new Map((activity||[]).map(item=>[item.user_id,item.last_activity_at]));
     }
-    const pageRows=(data.users||[]).map(user=>({...user,last_activity_at:activityByUser.get(user.id)||null}));
+    let accessByUser=new Map();
+    if(ids.length){
+      const {data:profiles,error:profileError}=await db.from("profiles").select("id,role,gems_enabled").in("id",ids);
+      if(profileError)throw profileError;
+      accessByUser=new Map((profiles||[]).map(profile=>[profile.id,{role:profile.role,gems_enabled:profile.gems_enabled}]));
+    }
+    const pageRows=(data.users||[]).map(user=>({...user,...accessByUser.get(user.id),last_activity_at:activityByUser.get(user.id)||null}));
     adminUserRows=append?adminUserRows.concat(pageRows):pageRows;
     adminUserPage=page+1;adminUsersHaveMore=pageRows.length===ADMIN_USER_PAGE_SIZE;
     renderAdminUsers();more.classList.toggle("hidden",!adminUsersHaveMore);
@@ -2531,6 +3147,17 @@ $("admin-invite-user-form").addEventListener("submit",async event=>{
 $("admin-users-refresh").addEventListener("click",()=>loadAdminUsers());
 $("admin-users-load-more").addEventListener("click",()=>loadAdminUsers(true));
 $("admin-user-search").addEventListener("input",renderAdminUsers);
+$("admin-user-list").addEventListener("change",async event=>{
+  const roleSelect=event.target.closest("[data-user-role]");
+  const gemsToggle=event.target.closest("[data-user-gems]");
+  if(!roleSelect&&!gemsToggle)return;
+  const userId=(roleSelect||gemsToggle).dataset.userRole||(roleSelect||gemsToggle).dataset.userGems;
+  if(!isAdmin||!userId)return;
+  const role=roleSelect?roleSelect.value:undefined;
+  const gemsEnabled=gemsToggle?gemsToggle.checked:undefined;
+  const {error}=await db.rpc("set_user_access",{p_user_id:userId,p_role:role,p_gems_enabled:gemsEnabled});
+  if(error)message("admin-user-message",error.message,true);else{message("admin-user-message","User access updated.");await loadAdminUsers()}
+});
 $("admin-user-list").addEventListener("click",event=>{
   const activity=event.target.closest("[data-user-activity]");
   const ban=event.target.closest("[data-user-ban]");
@@ -2547,7 +3174,7 @@ async function loadAdmin(){
   if(!("group_average" in data)){$("admin-stats").textContent="Could not load the group average. Run the latest schema.sql in the Supabase SQL Editor.";return}
   const groupAverage=data.group_average==null?"—":`${Number(data.group_average).toFixed(1)}%`;
   $("admin-stats").innerHTML=`<div class="stat"><strong>${data.quiz_count}</strong><span>Quizzes</span></div><div class="stat"><strong>${data.resource_count}</strong><span>Resources</span></div><div class="stat"><strong>${data.attempt_count}</strong><span>Recorded attempts</span></div><div class="stat"><strong>${data.student_count}</strong><span>Registered students</span></div><div class="stat"><strong>${groupAverage}</strong><span>Verified group average</span></div>`;
-  await Promise.all([loadAdminLists(),loadAdminSchedules(),loadAdminUsers()]);
+  await Promise.all([loadAdminLists(),loadAdminSchedules(),loadAdminUsers(),loadAchievementAdmin()]);
 }
 async function loadAdminLists(){
   if(!isAdmin)return;
@@ -2814,6 +3441,104 @@ $("page-admin").addEventListener("click",async e=>{
     await loadAdminLists();await loadContent()
   }}
 });
+const plannerDayNames=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+async function loadStudySchedules(){
+  if(!currentUser||currentProfileRole==="guest"){return}
+  const {data,error}=await db.from("study_schedules").select("*").eq("user_id",currentUser.id).order("day_of_week").order("start_time");
+  if(error){message("study-schedule-status",error.message,true);return}
+  const rows=data||[];
+  $("study-schedule-grid").innerHTML=rows.length?rows.map(row=>`
+    <article class="schedule-block" style="--schedule-color:${esc(row.color)}">
+      <label class="schedule-complete"><input type="checkbox" data-schedule-complete="${esc(row.id)}"${row.completed?" checked":""}> <span>Complete</span></label>
+      <strong>${esc(plannerDayNames[Number(row.day_of_week)])}</strong>
+      <h3>${esc(row.subject)}</h3>
+      <p>${esc(row.start_time.slice(0,5))}–${esc(row.end_time.slice(0,5))}</p>
+      <button class="text-button" type="button" data-schedule-delete="${esc(row.id)}">Delete</button>
+    </article>`).join(""):'<p class="muted">No study blocks yet.</p>';
+}
+$("study-schedule-form").addEventListener("submit",async event=>{
+  event.preventDefault();
+  if(!currentUser||currentProfileRole==="guest")return;
+  if($("schedule-end").value<=$("schedule-start").value){message("study-schedule-status","End time must be after start time.",true);return}
+  const row={user_id:currentUser.id,subject:$("schedule-subject").value.trim(),day_of_week:Number($("schedule-day").value),
+    start_time:$("schedule-start").value,end_time:$("schedule-end").value,color:$("schedule-color").value,
+    notification_enabled:$("schedule-notifications").checked};
+  const {error}=await db.from("study_schedules").insert(row);
+  if(error){message("study-schedule-status",error.message,true);return}
+  event.target.reset();message("study-schedule-status","Study block saved.");await loadStudySchedules();
+});
+let activeFlashcardDeckId=null,flashcardIndex=0,flashcardCards=[];
+async function loadFlashcardDecks(){
+  if(!currentUser||currentProfileRole==="guest")return;
+  const {data,error}=await db.from("flashcard_decks").select("*").eq("user_id",currentUser.id).order("created_at",{ascending:false});
+  if(error){message("flashcard-status",error.message,true);return}
+  $("flashcard-deck-list").innerHTML=(data||[]).length?(data||[]).map(deck=>`<article class="flashcard-deck"><div><h3>${esc(deck.title)}</h3><p>${esc(deck.description||"Custom medical flashcards")}</p></div><button class="button button-outline" type="button" data-open-deck="${esc(deck.id)}">Open deck</button></article>`).join(""):'<p class="muted">Create your first flashcard deck.</p>';
+}
+$("flashcard-deck-form").addEventListener("submit",async event=>{
+  event.preventDefault();
+  if(!currentUser||currentProfileRole==="guest")return;
+  const row={user_id:currentUser.id,title:$("flashcard-deck-title").value.trim(),description:$("flashcard-deck-description").value.trim()||null};
+  const {data,error}=await db.from("flashcard_decks").insert(row).select("id").single();
+  if(error){message("flashcard-status",error.message,true);return}
+  event.target.reset();activeFlashcardDeckId=data.id;message("flashcard-status","Deck created.");await loadFlashcardDecks();await openFlashcardDeck(data.id);
+});
+async function openFlashcardDeck(deckId){
+  activeFlashcardDeckId=deckId;flashcardIndex=0;
+  const {data,error}=await db.from("flashcards").select("*").eq("deck_id",deckId).order("created_at");
+  if(error){message("flashcard-status",error.message,true);return}
+  flashcardCards=data||[];
+  const studio=$("flashcard-studio");studio.classList.remove("hidden");
+  renderFlashcardStudio();
+}
+function renderFlashcardStudio(){
+  const studio=$("flashcard-studio");
+  if(!flashcardCards.length){
+    studio.innerHTML=`<h3>Add a flashcard</h3><form id="flashcard-add-form" class="flashcard-add-form"><label>Front<input id="flashcard-front" maxlength="500" required></label><label>Back<textarea id="flashcard-back" maxlength="1000" required></textarea></label><label>Hint (optional)<input id="flashcard-hint" maxlength="180"></label><label>Image URL (optional)<input id="flashcard-image" type="url"></label><button class="button button-primary" type="submit">Add card</button></form>`;
+  }else{
+    const card=flashcardCards[Math.min(flashcardIndex,flashcardCards.length-1)];
+    studio.innerHTML=`<div class="flashcard-progress">${flashcardIndex+1} / ${flashcardCards.length}</div><button id="flashcard-flip" class="flashcard-3d" type="button"><span class="flashcard-face flashcard-front-face">${esc(card.front)}${card.hint?`<small>Hint: ${esc(card.hint)}</small>`:""}</span><span class="flashcard-face flashcard-back-face">${card.image_url?`<img src="${esc(card.image_url)}" alt="">`:""}${esc(card.back)}</span></button><div class="flashcard-grading"><button class="button button-light" type="button" data-grade="again">Again</button><button class="button button-outline" type="button" data-grade="hard">Hard</button><button class="button button-primary" type="button" data-grade="good">Good</button><button class="button button-light" type="button" data-grade="easy">Easy</button></div><form id="flashcard-add-form" class="flashcard-add-form"><label>Front<input id="flashcard-front" maxlength="500" required></label><label>Back<textarea id="flashcard-back" maxlength="1000" required></textarea></label><button class="button button-outline" type="submit">Add another card</button></form>`;
+  }
+}
+$("study-schedule-grid").addEventListener("click",async event=>{
+  const del=event.target.closest("[data-schedule-delete]");
+  if(del){const {error}=await db.from("study_schedules").delete().eq("id",del.dataset.scheduleDelete);if(!error)await loadStudySchedules();return}
+});
+$("study-schedule-grid").addEventListener("change",async event=>{
+  const toggle=event.target.closest("[data-schedule-complete]");
+  if(toggle)await db.from("study_schedules").update({completed:toggle.checked}).eq("id",toggle.dataset.scheduleComplete);
+});
+$("flashcard-deck-list").addEventListener("click",event=>{
+  const button=event.target.closest("[data-open-deck]");
+  if(button)void openFlashcardDeck(button.dataset.openDeck);
+});
+$("flashcard-studio").addEventListener("submit",async event=>{
+  if(event.target.id!=="flashcard-add-form")return;
+  event.preventDefault();
+  const row={deck_id:activeFlashcardDeckId,front:$("flashcard-front").value.trim(),back:$("flashcard-back").value.trim(),
+    hint:$("flashcard-hint")?.value.trim()||null,image_url:$("flashcard-image")?.value.trim()||null};
+  if(!row.deck_id)return;
+  const {error}=await db.from("flashcards").insert(row);
+  if(error){message("flashcard-status",error.message,true);return}
+  message("flashcard-status","Card added.");await openFlashcardDeck(activeFlashcardDeckId);
+});
+$("flashcard-studio").addEventListener("click",event=>{
+  const flip=event.target.closest("#flashcard-flip");
+  if(flip){flip.classList.toggle("is-flipped");return}
+  const grade=event.target.closest("[data-grade]");
+  if(!grade||!flashcardCards.length)return;
+  const card=flashcardCards[Math.min(flashcardIndex,flashcardCards.length-1)];
+  const step={again:1,hard:2,good:4,easy:7}[grade.dataset.grade]||1;
+  flashcardIndex=(flashcardIndex+1)%flashcardCards.length;
+  db.from("flashcards").update({ease:Math.max(130,step===1?130:250+step*20),interval_days:step,next_review_at:new Date(Date.now()+step*86400000).toISOString()}).eq("id",card.id).then();
+  renderFlashcardStudio();
+});
+document.querySelectorAll("[data-planner-tab]").forEach(button=>button.addEventListener("click",()=>{
+  document.querySelectorAll("[data-planner-tab]").forEach(tab=>tab.classList.toggle("active",tab===button));
+  const schedule=button.dataset.plannerTab==="schedule";
+  $("planner-schedule").classList.toggle("hidden",!schedule);$("planner-schedule").hidden=!schedule;
+  $("planner-flashcards").classList.toggle("hidden",schedule);$("planner-flashcards").hidden=schedule;
+  if(schedule)void loadStudySchedules();else void loadFlashcardDecks();
+}));
 async function init(){
   populateTimeZones();
   if(!navigator.onLine)showNetworkNotice();
@@ -2849,6 +3574,17 @@ async function init(){
     signedOut();message("auth-message","Could not connect. Your session may have expired; check your network connection and try again.",true);
     showNetworkNotice();
   }
-  setInterval(()=>{if(currentUser&&!$("page-progress").classList.contains("hidden"))renderLeaderboard()},45000);
+  setInterval(()=>{
+    if(!currentUser)return;
+    if(!$("page-progress").classList.contains("hidden"))void renderLeaderboard();
+    if(!$("page-home").classList.contains("hidden"))void renderHomeLeaderboard();
+  },30000);
+  if(db&&currentProfileRole!=="guest"){
+    db.channel("medstudy-profile-leaderboard")
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"profiles"},()=>{
+        if(!$("page-progress").classList.contains("hidden"))void renderLeaderboard();
+        if(!$("page-home").classList.contains("hidden"))void renderHomeLeaderboard();
+      }).subscribe();
+  }
 }
 init();

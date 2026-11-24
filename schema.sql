@@ -714,7 +714,7 @@ create or replace view public.overall_leaderboard with (security_invoker=false) 
 select p.id as user_id,coalesce(nullif(trim(p.display_name),''),'Student') as display_name,
  count(a.id)::integer as quiz_count,round(avg(a.score/a.total_marks*100),2) as average_percentage
 from public.profiles p join public.quiz_attempts a on a.user_id=p.id
-where p.leaderboard_opt_in=true and a.is_verified=true
+where p.leaderboard_opt_in=true and p.role='member' and a.is_verified=true
   and exists(select 1 from public.feature_settings where key='leaderboards' and enabled=true)
  and (select count(distinct p2.id)>=3
       from public.profiles p2 join public.quiz_attempts a2 on a2.user_id=p2.id
@@ -725,7 +725,7 @@ create or replace view public.course_leaderboard with (security_invoker=false) a
 select p.id as user_id,coalesce(nullif(trim(p.display_name),''),'Student') as display_name,a.course,
  count(a.id)::integer as quiz_count,round(avg(a.score/a.total_marks*100),2) as average_percentage
 from public.profiles p join public.quiz_attempts a on a.user_id=p.id
-where p.leaderboard_opt_in=true and a.is_verified=true
+where p.leaderboard_opt_in=true and p.role='member' and a.is_verified=true
   and exists(select 1 from public.feature_settings where key='leaderboards' and enabled=true)
  and (select count(distinct p2.id)>=3
       from public.profiles p2 join public.quiz_attempts a2 on a2.user_id=p2.id
@@ -736,7 +736,7 @@ create or replace view public.weekly_leaderboard with (security_invoker=false) a
 select p.id as user_id,coalesce(nullif(trim(p.display_name),''),'Student') as display_name,
  count(a.id)::integer as quiz_count,round(avg(a.score/a.total_marks*100),2) as average_percentage
 from public.profiles p join public.quiz_attempts a on a.user_id=p.id
-where p.leaderboard_opt_in=true and a.is_verified=true and a.created_at>=now()-interval '7 days'
+where p.leaderboard_opt_in=true and p.role='member' and a.is_verified=true and a.created_at>=now()-interval '7 days'
   and exists(select 1 from public.feature_settings where key='leaderboards' and enabled=true)
  and (select count(distinct p2.id)>=3
       from public.profiles p2 join public.quiz_attempts a2 on a2.user_id=p2.id
@@ -757,14 +757,14 @@ select x.user_id,coalesce(nullif(trim(p.display_name),''),'Student') as display_
  round(x.previous_average,2) as previous_average,round(x.current_average,2) as current_average,
  round(x.current_average-x.previous_average,2) as improvement_percentage_points
 from periods x join public.profiles p on p.id=x.user_id
-where p.leaderboard_opt_in=true and x.current_count>=3 and x.previous_count>=3
+where p.leaderboard_opt_in=true and p.role='member' and x.current_count>=3 and x.previous_count>=3
   and exists(select 1 from public.feature_settings where key='leaderboards' and enabled=true);
 
 create or replace view public.recent_group_activity with (security_invoker=false) as
 select coalesce(nullif(trim(p.display_name),''),'Student') as display_name,a.course,a.quiz_title,
- round(a.score/a.total_marks*100,2) as percentage,a.created_at
+ round(a.score/a.total_marks*100,2) as percentage,a.created_at,a.user_id
 from public.quiz_attempts a join public.profiles p on p.id=a.user_id
-where p.leaderboard_opt_in=true and a.is_verified=true
+where p.leaderboard_opt_in=true and p.role='member' and a.is_verified=true
   and exists(select 1 from public.feature_settings where key='leaderboards' and enabled=true);
 
 create or replace view public.admin_summary with (security_invoker=false) as

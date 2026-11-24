@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="shopCatalog.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -42,15 +43,16 @@
       <button id="settings-toggle" class="icon-button settings-toggle" type="button" aria-label="Open settings" aria-controls="settings-drawer" aria-expanded="false">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"></path><path d="m19.4 15 .1.1a1.7 1.7 0 0 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 0 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 1 1-2.4-2.4l.1-.1a1.7 1.7 0 0 0-1.2-2.9H4a1.7 1.7 0 0 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 1 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2.1a1.7 1.7 0 0 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 1 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 0 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.8Z"></path></svg>
       </button>
+      <button id="gem-balance-button" class="gem-balance-button" type="button" aria-label="Open Gems Shop, balance: 0 gems"><span aria-hidden="true">💎</span><strong id="gem-balance-count">0</strong><small>Gems</small></button>
       <button id="logout-btn" class="button button-light" type="button">Log out</button>
     </div>
   </div>
   <div class="nav-shell">
-    <nav id="main-navigation" class="nav-tabs nav-drawer hidden" aria-label="Main navigation">
+    <nav id="main-navigation" class="nav-tabs nav-drawer hidden" aria-label="Main navigation" aria-hidden="true">
       <div class="drawer-heading"><div><p class="eyebrow">METROS STUDY HUB</p><h2>Navigation</h2></div><button id="nav-menu-close" class="icon-button drawer-close" type="button" aria-label="Close navigation">×</button></div>
       <button class="nav-link active" type="button" data-page="home">Home</button><button class="nav-link" type="button" data-page="quizzes" data-feature-nav="quizzes">Quizzes</button>
       <button class="nav-link" type="button" data-page="classes">Classes / exams</button>
-      <button class="nav-link" type="button" data-page="progress">Results &amp; progress</button><button class="nav-link" type="button" data-page="resources" data-feature-nav="resources">Notes &amp; videos</button>
+      <button class="nav-link" type="button" data-page="progress">Results &amp; progress</button><button class="nav-link" type="button" data-page="achievements">Achievements</button><button class="nav-link" type="button" data-page="resources" data-feature-nav="resources">Notes &amp; videos</button>
       <button class="nav-link" type="button" data-page="profile">My profile</button><button class="nav-link hidden" type="button" id="admin-nav" data-page="admin">Admin dashboard</button>
     </nav>
   </div>
@@ -68,6 +70,8 @@
         <details class="settings-section"><summary>Appearance</summary>
           <label class="settings-switch"><span>Dark mode</span><input id="settings-dark-mode" type="checkbox"></label>
           <label>Theme / accent colour<input id="settings-accent-color" type="color" value="#087f8c"></label>
+          <label>Streak character<select id="settings-streak-mascot"><option value="evolving">Evolving buddy (changes as your streak grows)</option><option value="evolving-fire">Evolving fire (glow changes with your streak)</option><option value="chick">🐣 Chick</option><option value="fox">🦊 Fox</option><option value="panda">🐼 Panda</option><option value="dragon">🐉 Dragon</option><option value="unicorn">🦄 Unicorn</option><option value="cat">🐱 Cat</option><option value="frog">🐸 Frog</option><option value="turtle">🐢 Turtle</option></select><span class="field-help">Choose an animated buddy, an evolving flame, or let your buddy evolve with your streak.</span></label>
+              <label>Profile header banner blur <input id="banner-blur" type="range" min="0" max="20" value="4"><span id="banner-blur-value" class="field-help">4 px</span></label>
           <label>Layout density<select id="settings-density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
           <label>Text size<select id="settings-text-size"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></label>
           <div class="settings-home-sections">
@@ -162,6 +166,7 @@
   <section id="home-courses-section" data-home-section="courses"><h2 class="section-heading">Your courses</h2><div id="course-grid" class="course-grid"></div></section>
   <div class="two-column" data-home-section="quickstart"><article class="panel"><h3>Quick start</h3><p>Open a quiz or visit the resource library for notes, textbooks and selected video lessons.</p><button class="button button-primary" data-go="quizzes">Explore quizzes</button></article>
   <article class="panel"><h3>Your learning record</h3><p>Your personal scores are private. Only verified scores from the Google Forms integration count toward official group rankings.</p><button class="button button-outline" data-go="progress">View progress</button></article></div>
+  <section class="panel ai-assistant-card" data-home-section="quickstart" aria-labelledby="ai-assistant-heading"><div><p class="eyebrow">OPTIONAL AI STUDY SUPPORT</p><h2 id="ai-assistant-heading">Medical study assistant</h2><p>Opening the assistant costs 10 Gems once for this page session. It will never spend Gems automatically.</p></div><button id="ai-assistant-launch" class="button button-primary hidden" type="button">Open AI assistant · 10 Gems</button><p id="ai-assistant-status" class="message" role="status" aria-live="polite"></p></section>
   <button id="chat-launch" class="chat-launch" type="button" aria-label="Open study-group chat" title="Study-group chat" aria-controls="group-chat-panel" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-5 4v-4.6a2.5 2.5 0 0 1-1-1.9z"></path></svg></button>
   <section id="group-chat-panel" class="group-chat-panel hidden" role="dialog" aria-label="Study-group chat">
     <header class="group-chat-header"><div><h2>Study-group chat</h2><p>Messages and voice notes expire after 7 days.</p><p id="chat-online-summary" class="chat-online-summary" aria-live="polite">Checking who's online…</p></div><button id="chat-close" class="icon-button" type="button" aria-label="Close chat">×</button></header>
@@ -205,10 +210,10 @@
 </section>
 
 <section id="page-progress" class="page hidden">
-  <div class="page-heading"><div><p class="eyebrow">KEEP MOVING FORWARD</p><h1>Results &amp; progress</h1><p>Review your personal results and compare verified group performance.</p></div><div class="progress-heading-tools"><div id="streak-chip" class="streak-chip" aria-label="Current study streak"><span aria-hidden="true">🔥</span><strong id="streak-chip-count">0</strong><small>day streak</small></div><button class="button button-outline" id="refresh-leaderboard" type="button" aria-live="polite">Refresh ↻</button></div></div>
+  <div class="page-heading"><div><p class="eyebrow">KEEP MOVING FORWARD</p><h1>Results &amp; progress</h1><p>Review your personal results and compare verified group performance.</p></div><div class="progress-heading-tools"><div id="streak-chip" class="streak-chip" aria-label="Current study streak"><span class="streak-mascot streak-chip-mascot" data-streak-mascot aria-hidden="true">🐣</span><strong id="streak-chip-count">0</strong><small>day streak</small></div><button class="button button-outline" id="refresh-leaderboard" type="button" aria-live="polite">Refresh ↻</button></div></div>
   <div class="notice">Scores you enter manually are marked unverified and remain in your private record. Official leaderboards use verified Google Forms scores only.</div>
   <section id="streak-progress" class="panel streak-progress-panel" aria-labelledby="streak-progress-heading">
-    <div class="streak-progress-heading"><div><p class="eyebrow">YOUR STUDY HABIT</p><h2 id="streak-progress-heading">Daily study streak</h2><p id="streak-summary">Your consecutive days of returning to MedStudy Hub.</p></div><span class="streak-flame" aria-hidden="true">🔥</span></div>
+    <div class="streak-progress-heading"><div><p class="eyebrow">YOUR STUDY HABIT</p><h2 id="streak-progress-heading">Daily study streak</h2><p id="streak-summary">Your consecutive days of returning to MedStudy Hub.</p></div><span class="streak-mascot streak-panel-mascot" data-streak-mascot aria-hidden="true">🐣</span></div>
     <div class="streak-progress-stats"><div><strong id="streak-current-count">0</strong><span>Current streak</span></div><div><strong id="streak-best-count">0</strong><span>Longest streak</span></div><div><strong id="streak-last-date">—</strong><span>Last visit</span></div></div>
     <div class="streak-progress-track" role="progressbar" aria-label="Progress to a seven-day study streak" aria-valuemin="0" aria-valuemax="7" aria-valuenow="0"><span id="streak-progress-fill"></span></div>
     <p id="streak-sync-status" class="field-help" role="status"></p>
@@ -232,12 +237,17 @@
   </div>
   <div id="stats-grid" class="stats-grid"></div>
   <div class="panel"><h2>My performance by course</h2><canvas id="performance-chart" height="120" aria-label="Performance chart"></canvas></div>
-  <div class="panel"><h2>My achievements</h2><div id="achievement-list" class="achievement-grid"></div></div>
   <div class="panel progress-report-panel"><div class="leaderboard-heading"><div><h2>My recent results</h2><p class="muted">Download a spreadsheet or print your personal progress report.</p></div><div class="progress-report-actions"><button class="button button-outline" id="export-progress-csv" type="button">Download CSV</button><button class="button button-primary" id="print-progress-report" type="button">Print report</button></div></div><p id="progress-export-status" class="message" role="status" aria-live="polite"></p><div class="table-wrap"><table><thead><tr><th>Date</th><th>Course</th><th>Quiz</th><th>Score</th><th>Status</th><th>Question review</th></tr></thead><tbody id="results-body"></tbody></table></div></div>
   <div id="leaderboard-panel" class="panel"><div class="leaderboard-heading"><div><h2>Study-group leaderboard</h2><p class="muted">Students must opt in. Rankings start when three opted-in students have at least one verified attempt; all eligible students are ranked.</p></div></div>
     <div class="leaderboard-tabs"><button class="leaderboard-tab active" data-board="overall">Overall</button><button class="leaderboard-tab" data-board="courses">By course</button><button class="leaderboard-tab" data-board="weekly">This week</button><button class="leaderboard-tab" data-board="improved">Most improved</button><button class="leaderboard-tab" data-board="activity">Recent activity</button></div>
     <div id="leaderboard-content"><p class="muted loading-inline" aria-live="polite"><span class="refresh-spinner" aria-hidden="true"></span>Loading rankings…</p></div><div id="student-detail" class="student-detail hidden"></div>
   </div>
+</section>
+
+<section id="page-achievements" class="page hidden" aria-labelledby="achievements-heading">
+  <div class="page-heading"><div><p class="eyebrow">MILESTONES &amp; REWARDS</p><h1 id="achievements-heading">Achievements</h1><p>Track your study milestones and claim available Gem and XP rewards.</p></div></div>
+  <p id="achievement-status" class="message" role="status" aria-live="polite"></p>
+  <div id="achievement-list" class="achievement-grid"></div>
 </section>
 
 <section id="page-resources" class="page hidden"><div class="page-heading"><div><p class="eyebrow">YOUR STUDY LIBRARY</p><h1>Notes, textbooks &amp; videos</h1><p>Find course materials collected in one library.</p></div></div>
@@ -257,6 +267,36 @@
     </section>
   </section>
   <div class="filter-row"><label>Course<select id="resource-course-filter"><option value="all">All courses</option></select></label><label>Type<select id="resource-type-filter"><option value="all">All types</option><option value="note">Notes</option><option value="textbook">Textbooks</option><option value="video">Videos</option><option value="other">Other</option></select></label></div><div id="resource-list" class="resource-course-list"></div>
+  <section class="panel study-planner-section" id="study-planner-section">
+    <div class="leaderboard-heading"><div><p class="eyebrow">PERSONAL STUDY SYSTEM</p><h2>Study Planner &amp; Flashcards</h2><p>Build a weekly timetable and custom revision decks.</p></div></div>
+    <div class="profile-tabs" role="tablist">
+      <button class="profile-tab active" type="button" data-planner-tab="schedule">Reading timetable</button>
+      <button class="profile-tab" type="button" data-planner-tab="flashcards">Flashcard studio</button>
+    </div>
+    <div id="planner-schedule" class="planner-tab-panel">
+      <form id="study-schedule-form" class="study-schedule-form">
+        <label>Subject / course<input id="schedule-subject" maxlength="100" required placeholder="e.g. Cardiovascular physiology"></label>
+        <label>Day<select id="schedule-day" required><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select></label>
+        <label>Start time<input id="schedule-start" type="time" required></label>
+        <label>End time<input id="schedule-end" type="time" required></label>
+        <label>Colour<input id="schedule-color" type="color" value="#087f8c"></label>
+        <label class="check-label"><input id="schedule-notifications" type="checkbox" checked> Notifications</label>
+        <button class="button button-primary" type="submit">Add study block</button>
+      </form>
+      <p id="study-schedule-status" class="message" role="status"></p>
+      <div id="study-schedule-grid" class="study-schedule-grid"></div>
+    </div>
+    <div id="planner-flashcards" class="planner-tab-panel hidden" hidden>
+      <form id="flashcard-deck-form" class="flashcard-deck-form">
+        <label>Deck title<input id="flashcard-deck-title" maxlength="100" required placeholder="e.g. Upper limb anatomy"></label>
+        <label>Description<input id="flashcard-deck-description" maxlength="240" placeholder="Optional"></label>
+        <button class="button button-primary" type="submit">Create deck</button>
+      </form>
+      <p id="flashcard-status" class="message" role="status"></p>
+      <div id="flashcard-deck-list" class="flashcard-deck-list"></div>
+      <div id="flashcard-studio" class="flashcard-studio hidden"></div>
+    </div>
+  </section>
   <p class="fine-print">Only share materials you own or have permission to distribute. For copyrighted textbooks, link to authorised sources.</p>
 </section>
 
@@ -268,7 +308,8 @@
       <div class="profile-identity">
         <p class="eyebrow">MEDICAL STUDENT</p><h2 id="profile-hero-name">Student</h2>
         <p id="profile-hero-academic">Medical school not set <span aria-hidden="true">·</span> Year of study not set</p>
-        <p id="profile-hero-interest">Specialty interest not set</p>
+        <p id="profile-hero-interest">Specialty interest not set</p><p id="profile-hero-title" class="profile-hero-title hidden"></p>
+        <span id="profile-hero-level" class="profile-hero-level">Level 1 · 0 XP</span>
         <span class="profile-member-badge"><span aria-hidden="true">●</span> METROS member</span>
       </div>
       <div class="profile-hero-actions"><button class="button button-primary" id="edit-profile-button" type="button">Edit Profile</button><button class="button button-outline" type="button" data-go="progress">View progress</button></div>
@@ -277,8 +318,7 @@
   <div class="profile-tabs" role="tablist" aria-label="Profile sections">
     <button class="profile-tab active" id="profile-tab-button-overview" type="button" role="tab" aria-selected="true" aria-controls="profile-tab-overview" data-profile-tab="overview">Overview &amp; Bio</button>
     <button class="profile-tab" id="profile-tab-button-progress" type="button" role="tab" aria-selected="false" aria-controls="profile-tab-progress" data-profile-tab="progress">Study Progress</button>
-    <button class="profile-tab" id="profile-tab-button-resources" type="button" role="tab" aria-selected="false" aria-controls="profile-tab-resources" data-profile-tab="resources">Saved Resources</button>
-    <button class="profile-tab" id="profile-tab-button-groups" type="button" role="tab" aria-selected="false" aria-controls="profile-tab-groups" data-profile-tab="groups">Study Groups</button>
+    <button class="profile-tab" id="profile-tab-button-shop" type="button" role="tab" aria-selected="false" aria-controls="profile-tab-shop" data-profile-tab="shop">Gems Shop</button>
   </div>
   <section class="profile-tab-panel" id="profile-tab-overview" role="tabpanel" aria-labelledby="profile-tab-button-overview">
     <section class="profile-overview-grid" aria-label="Study profile details">
@@ -291,6 +331,11 @@
     <div class="profile-photo-control">
       <div><h3>Profile picture</h3><p>Your photo is resized before upload and visible to signed-in study hub members wherever your avatar appears.</p><label class="profile-banner-toggle"><input id="profile-banner-photo" type="checkbox" checked> Use my profile photo in the header banner</label><p class="field-help">Turn this off to keep your photo on your avatar and use your theme colours for the banner.</p></div>
       <div class="profile-photo-actions"><label class="button button-outline profile-photo-upload" for="profile-picture">Choose image<input id="profile-picture" type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="sr-only"></label><button class="button button-light" id="remove-profile-picture" type="button">Remove photo</button></div>
+    </div>
+    <div class="profile-avatar-picker">
+      <div class="profile-section-heading"><h3>Choose a medical avatar</h3><p>Select a built-in avatar, or upload your own picture above.</p></div>
+      <div id="profile-avatar-options" class="profile-avatar-options" role="radiogroup" aria-label="Choose an avatar"></div>
+      <p id="profile-avatar-message" class="message" role="status"></p>
     </div>
     <p id="profile-photo-message" class="message" role="status" aria-live="polite"></p>
     <div class="profile-fields">
@@ -314,19 +359,37 @@
   </div>
   </section>
   <section class="profile-tab-panel hidden" id="profile-tab-progress" role="tabpanel" aria-labelledby="profile-tab-button-progress" hidden>
+    <section id="profile-level-panel" class="panel profile-level-panel" aria-label="Level and XP progression">
+      <div class="profile-level-heading"><div><p class="eyebrow">ACHIEVEMENT PROGRESSION</p><h2 id="profile-level-value">Level 1</h2></div><strong id="profile-xp-value">0 XP</strong></div>
+      <div class="profile-level-track" role="progressbar" aria-label="Progress to the next level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="profile-xp-progress"></span></div>
+      <p id="profile-next-level" class="muted">Claim achievements to earn XP and level up.</p>
+    </section>
     <div class="profile-metric-grid">
       <article class="panel profile-metric-card"><span class="eyebrow">STUDY STREAK</span><strong id="profile-metric-streak">0 days</strong><p>Consecutive days returning to your study hub.</p></article>
       <article class="panel profile-metric-card"><span class="eyebrow">QUIZZES COMPLETED</span><strong id="profile-metric-quizzes">0</strong><p>Personal practice results recorded.</p></article>
       <article class="panel profile-metric-card"><span class="eyebrow">COURSES PRACTISED</span><strong id="profile-metric-courses">0 / 5</strong><p>Different courses with recorded quiz results.</p></article>
-      <article class="panel profile-metric-card"><span class="eyebrow">STUDY GROUP CHAT</span><strong id="profile-metric-groups">Available</strong><p>Your shared study-group conversation.</p></article>
     </div>
     <a class="button button-primary" href="#" data-go="progress">Open full study progress</a>
   </section>
-  <section class="profile-tab-panel hidden" id="profile-tab-resources" role="tabpanel" aria-labelledby="profile-tab-button-resources" hidden>
-    <div class="panel profile-saved-resources"><div class="profile-section-heading"><h2>Saved resources</h2><p>Keep useful notes, references and videos close at hand.</p></div><div id="profile-saved-resources-list" class="profile-saved-resource-list"><p class="muted">Loading your saved resources…</p></div><p id="profile-saved-status" class="message" role="status" aria-live="polite"></p><button class="button button-outline" type="button" data-go="resources">Browse study resources</button></div>
-  </section>
-  <section class="profile-tab-panel hidden" id="profile-tab-groups" role="tabpanel" aria-labelledby="profile-tab-button-groups" hidden>
-    <div class="panel profile-groups-panel"><p class="eyebrow">LEARN TOGETHER</p><h2>Study groups</h2><h3>MedStudy Hub group chat</h3><p>Discuss revision plans and share study tips with other signed-in students. Keep messages free of private or patient-identifiable information.</p><button id="profile-open-group-chat" class="button button-primary" type="button">Open study-group chat</button><p id="profile-group-status" class="message" role="status"></p></div>
+  <section class="profile-tab-panel hidden" id="profile-tab-shop" role="tabpanel" aria-labelledby="profile-tab-button-shop" hidden>
+    <div class="panel gems-shop-panel">
+      <div class="shop-heading"><div><p class="eyebrow">GEMS MARKETPLACE</p><h2>My Gems Shop</h2><p id="shop-balance" class="muted">Balance: 0 gems</p></div></div>
+      <div id="shop-category-tabs" class="shop-category-tabs" aria-label="Shop categories">
+        <button class="shop-tab active" type="button" data-shop-category="themes">Themes</button>
+        <button class="shop-tab" type="button" data-shop-category="scrubs">Scrubs &amp; Avatars</button>
+        <button class="shop-tab" type="button" data-shop-category="frames">Frames &amp; Titles</button>
+        <button class="shop-tab" type="button" data-shop-category="boosters">Study boosters</button>
+      </div>
+      <div id="shop-rarity-filters" class="shop-rarity-filters" aria-label="Rarity filters">
+        <button class="rarity-pill active" type="button" data-rarity="All">All</button>
+        <button class="rarity-pill" type="button" data-rarity="Starter">Starter</button>
+        <button class="rarity-pill" type="button" data-rarity="Rare">Rare</button>
+        <button class="rarity-pill" type="button" data-rarity="Epic">Epic</button>
+        <button class="rarity-pill" type="button" data-rarity="Legendary">Legendary</button>
+      </div>
+      <div id="gems-shop-grid" class="gems-shop-grid"></div>
+      <p id="gems-shop-status" class="message" role="status"></p>
+    </div>
   </section>
   <div class="panel"><h2>Account security</h2><p>We can send a password-reset link to your registered email address.</p><button class="button button-outline" id="profile-reset-password">Send password reset email</button><p id="security-message" class="message" role="status"></p></div>
   <div class="panel danger-panel"><h2>Delete my account</h2><p>Deleting your account permanently removes your profile and quiz history. This action cannot be undone.</p><button class="button button-danger" id="delete-account">Permanently delete my account</button></div>
@@ -436,17 +499,45 @@
     <p class="muted">Turn study features on or off for students. Class phone notifications also require each student to enable alerts on their device.</p>
     <div id="admin-feature-settings" class="admin-feature-settings"></div><p id="admin-feature-settings-message" class="message" role="status"></p>
   </details>
+  <details class="admin-section"><summary>Sound &amp; Media Settings</summary>
+    <section class="panel"><h2>Streak Login Sound</h2>
+      <label>Upload .mp3 or .wav<input id="streak-sound-file" type="file" accept=".mp3,.wav,audio/mpeg,audio/wav"></label>
+      <div class="button-row"><button id="streak-sound-test" class="button button-outline" type="button">Test Sound</button><button id="streak-sound-save" class="button button-primary" type="button">Save streak sound</button></div>
+      <p id="streak-sound-status" class="field-help" role="status"></p>
+    </section>
+  </details>
+  <details class="admin-section"><summary>Achievements Manager</summary>
+    <form id="achievement-form" class="panel"><h2>Create achievement</h2>
+      <input id="achievement-id" type="hidden">
+      <label>Title<input id="achievement-title" maxlength="100" required></label>
+      <label>Description<textarea id="achievement-description" maxlength="500" required></textarea></label>
+      <label>Icon<input id="achievement-icon" maxlength="10" value="🏅"></label>
+      <label>Gem reward<input id="achievement-gems" type="number" min="0" value="25" required></label>
+      <label>Requirement type<select id="achievement-requirement-type"><option value="quizzes_completed">Quizzes completed</option><option value="streak_days">Streak days</option><option value="score_threshold">Single score threshold</option><option value="courses_completed">Courses completed</option><option value="average_threshold">Average score threshold</option><option value="weekly_top_scorer">Weekly leaderboard champion</option><option value="quiz_podium">Quiz podium place</option><option value="course_podium">Course podium place</option></select></label>
+      <label id="achievement-requirement-value-field">Threshold or podium place<input id="achievement-requirement-value" type="number" min="0" value="1" required><small id="achievement-requirement-value-help" class="field-help">For podium achievements, use 1, 2 or 3.</small></label>
+      <label id="achievement-requirement-scope-field" class="hidden">Target quiz title or course<input id="achievement-requirement-scope" type="text" maxlength="140"><small id="achievement-requirement-scope-help" class="field-help"></small></label>
+      <button class="button button-primary" type="submit">Save achievement</button><p id="achievement-admin-status" class="message" role="status"></p>
+    </form>
+    <div id="achievement-admin-list" class="achievement-grid"></div>
+  </details>
 </section>
 </section>
 </main>
 <footer>METROS Study Hub <span>•</span> Built for collaborative learning</footer>
+<div id="public-profile-modal" class="public-profile-modal" aria-hidden="true">
+  <section class="public-profile-dialog" role="dialog" aria-modal="true" aria-labelledby="public-profile-name">
+    <button id="public-profile-close" class="icon-button" type="button" aria-label="Close public profile">×</button>
+    <div id="public-profile-content"></div>
+  </section>
+</div>
 <div id="streak-modal" class="streak-modal" aria-hidden="true">
   <section class="streak-dialog" role="dialog" aria-modal="true" aria-labelledby="streak-modal-title" aria-describedby="streak-modal-description">
     <button id="streak-modal-close" class="icon-button streak-modal-close" type="button" aria-label="Close streak celebration">×</button>
-    <span class="streak-modal-fire" aria-hidden="true">🔥</span><p class="eyebrow">DAILY STUDY STREAK</p>
+    <span class="streak-mascot streak-modal-mascot" data-streak-mascot aria-hidden="true">🐣</span><p class="eyebrow">DAILY STUDY STREAK</p>
     <h2 id="streak-modal-title">Welcome back!</h2><p id="streak-modal-description">You're building a great study habit.</p>
     <div class="streak-modal-count"><strong id="streak-modal-count">0</strong><span>day streak</span></div>
     <p id="streak-modal-status" class="field-help" role="status"></p>
+    <button id="restore-streak-gems" class="button button-outline full-width hidden" type="button">Restore streak with 50 gems</button>
     <button id="streak-modal-done" class="button button-primary full-width" type="button">Continue studying</button>
   </section>
 </div>
@@ -462,6 +553,13 @@
     <button id="focus-break" class="text-button focus-break-button" type="button">Start a 5-minute break</button>
     <p id="focus-save-status" class="message" role="status" aria-live="polite"></p>
   </section>
+</div>
+<div id="focus-floating-bar" class="focus-floating-bar" role="timer" aria-label="Floating focus timer">
+  <strong id="focus-floating-time">25:00</strong>
+  <button id="focus-floating-start" class="button button-primary" type="button">Play</button>
+  <button id="focus-floating-pause" class="button button-outline" type="button">Pause</button>
+  <button id="focus-floating-reset" class="button button-light" type="button">Reset</button>
+  <button id="focus-floating-exit" class="icon-button" type="button" aria-label="Exit focus mode">×</button>
 </div>
 <div id="live-notice-region" class="live-notice-region" aria-live="polite" aria-atomic="true"></div>
 <script src="ethora-config.js" defer></script>

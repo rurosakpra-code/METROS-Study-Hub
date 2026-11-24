@@ -1,7 +1,16 @@
+/**
+ * MedStudy Hub verified Google Forms score bridge.
+ * Attach this script to a Google Form quiz (Extensions > Apps Script).
+ * Configure Script Properties: MEDSTUDY_EDGE_FUNCTION_URL and MEDSTUDY_SHARED_SECRET.
+ * Enable "Collect email addresses" and make the Form a quiz with points assigned.
+ */
 function installSubmitTrigger() {
   var form = FormApp.getActiveForm();
   ScriptApp.getProjectTriggers()
-    .filter(function(trigger) { return trigger.getHandlerFunction() === "handleFormSubmit"; })
+    .filter(function(trigger) {
+      var handler = trigger.getHandlerFunction();
+      return handler === "handleFormSubmit" || handler === "onFormSubmit";
+    })
     .forEach(function(trigger) { ScriptApp.deleteTrigger(trigger); });
   ScriptApp.newTrigger("handleFormSubmit").forForm(form).onFormSubmit().create();
 }
@@ -24,13 +33,13 @@ function handleFormSubmit(event) {
       question: item.getTitle(),
       answer: Array.isArray(rawAnswer) ? rawAnswer.join(", ") : String(rawAnswer == null ? "" : rawAnswer),
       points_awarded: itemResponse.getScore(),
-      points_possible: item.getPoints(),
+      points_possible: getItemPoints(item),
       correct_answers: correctAnswers,
       feedback: feedback ? feedback.getText() : ""
     };
   });
   var total = items.reduce(function(sum, itemResponse) {
-    return sum + itemResponse.getItem().getPoints();
+    return sum + getItemPoints(itemResponse.getItem());
   }, 0);
 
   if (!email || score == null || total <= 0) {
@@ -59,6 +68,23 @@ function handleFormSubmit(event) {
   }
 }
 
+function getItemPoints(item) {
+  switch (item.getType()) {
+    case FormApp.ItemType.CHECKBOX:
+      return item.asCheckboxItem().getPoints();
+    case FormApp.ItemType.LIST:
+      return item.asListItem().getPoints();
+    case FormApp.ItemType.MULTIPLE_CHOICE:
+      return item.asMultipleChoiceItem().getPoints();
+    case FormApp.ItemType.PARAGRAPH_TEXT:
+      return item.asParagraphTextItem().getPoints();
+    case FormApp.ItemType.TEXT:
+      return item.asTextItem().getPoints();
+    default:
+      throw new Error("Unsupported gradable question type: " + item.getType());
+  }
+}
+
 function getCorrectAnswers(item) {
   var choices;
   switch (item.getType()) {
@@ -78,3 +104,4 @@ function getCorrectAnswers(item) {
     .filter(function(choice) { return choice.isCorrectAnswer(); })
     .map(function(choice) { return choice.getValue(); });
 }
+

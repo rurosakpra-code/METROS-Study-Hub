@@ -1,5 +1,5 @@
-const CACHE_NAME = "medstudy-hub-v8";
-const APP_SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./ethora-config.js", "./ethora-widget.js", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png"];
+const CACHE_NAME = "medstudy-hub-v14";
+const APP_SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./shopCatalog.js", "./ethora-config.js", "./ethora-widget.js", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
